@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Copyrigh (c) 2015, René Moser <mail@renemoser.net>
+# Copyright (c) 2015, René Moser <mail@renemoser.net>
 # Simplified BSD License (see licenses/simplified_bsd.txt or https://opensource.org/licenses/BSD-2-Clause)
 
 from __future__ import absolute_import, division, print_function
@@ -9,26 +9,19 @@ __metaclass__ = type
 import os
 import sys
 import time
+import traceback
 
 from ansible.module_utils._text import to_text, to_native
+from ansible.module_utils.basic import missing_required_lib
 
+CS_IMP_ERR = None
 try:
     from cs import CloudStack, CloudStackException, read_config
     HAS_LIB_CS = True
 except ImportError:
+    CS_IMP_ERR = traceback.format_exc()
     HAS_LIB_CS = False
 
-CS_HYPERVISORS = [
-    'KVM', 'kvm',
-    'VMware', 'vmware',
-    'BareMetal', 'baremetal',
-    'XenServer', 'xenserver',
-    'LXC', 'lxc',
-    'HyperV', 'hyperv',
-    'UCS', 'ucs',
-    'OVM', 'ovm',
-    'Simulator', 'simulator',
-]
 
 if sys.version_info > (3,):
     long = int
@@ -39,8 +32,8 @@ def cs_argument_spec():
         api_key=dict(default=os.environ.get('CLOUDSTACK_KEY')),
         api_secret=dict(default=os.environ.get('CLOUDSTACK_SECRET'), no_log=True),
         api_url=dict(default=os.environ.get('CLOUDSTACK_ENDPOINT')),
-        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD') or 'get'),
-        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT') or 10),
+        api_http_method=dict(choices=['get', 'post'], default=os.environ.get('CLOUDSTACK_METHOD')),
+        api_timeout=dict(type='int', default=os.environ.get('CLOUDSTACK_TIMEOUT')),
         api_region=dict(default=os.environ.get('CLOUDSTACK_REGION') or 'cloudstack'),
     )
 
@@ -53,7 +46,7 @@ class AnsibleCloudStack:
 
     def __init__(self, module):
         if not HAS_LIB_CS:
-            module.fail_json(msg="python library cs required: pip install cs")
+            module.fail_json(msg=missing_required_lib('cs'), exception=CS_IMP_ERR)
 
         self.result = {
             'changed': False,
@@ -92,7 +85,7 @@ class AnsibleCloudStack:
         ]
 
         self.module = module
-        self._connect()
+        self._cs = None
 
         # Helper for VPCs
         self._vpc_networks_ids = None
@@ -102,6 +95,7 @@ class AnsibleCloudStack:
         self.project = None
         self.ip_address = None
         self.network = None
+        self.physical_network = None
         self.vpc = None
         self.zone = None
         self.vm = None
@@ -111,7 +105,14 @@ class AnsibleCloudStack:
         self.capabilities = None
         self.network_acl = None
 
-    def _connect(self):
+    @property
+    def cs(self):
+        if self._cs is None:
+            api_config = self.get_api_config()
+            self._cs = CloudStack(**api_config)
+        return self._cs
+
+    def get_api_config(self):
         api_region = self.module.params.get('api_region') or os.environ.get('CLOUDSTACK_REGION')
         try:
             config = read_config(api_region)
@@ -122,19 +123,19 @@ class AnsibleCloudStack:
             'endpoint': self.module.params.get('api_url') or config.get('endpoint'),
             'key': self.module.params.get('api_key') or config.get('key'),
             'secret': self.module.params.get('api_secret') or config.get('secret'),
-            'timeout': self.module.params.get('api_timeout') or config.get('timeout'),
-            'method': self.module.params.get('api_http_method') or config.get('method'),
+            'timeout': self.module.params.get('api_timeout') or config.get('timeout') or 10,
+            'method': self.module.params.get('api_http_method') or config.get('method') or 'get',
         }
         self.result.update({
             'api_region': api_region,
             'api_url': api_config['endpoint'],
             'api_key': api_config['key'],
-            'api_timeout': api_config['timeout'],
+            'api_timeout': int(api_config['timeout']),
             'api_http_method': api_config['method'],
         })
         if not all([api_config['endpoint'], api_config['key'], api_config['secret']]):
             self.fail_json(msg="Missing api credentials: can not authenticate")
-        self.cs = CloudStack(**api_config)
+        return api_config
 
     def fail_json(self, **kwargs):
         self.result.update(kwargs)
@@ -290,6 +291,24 @@ class AnsibleCloudStack:
                         self._vpc_networks_ids.append(n['id'])
         return network_id in self._vpc_networks_ids
 
+    def get_physical_network(self, key=None):
+        if self.physical_network:
+            return self._get_by_key(key, self.physical_network)
+        physical_network = self.module.params.get('physical_network')
+        args = {
+            'zoneid': self.get_zone(key='id')
+        }
+        physical_networks = self.query_api('listPhysicalNetworks', **args)
+        if not physical_networks:
+            self.fail_json(msg="No physical networks available.")
+
+        for net in physical_networks['physicalnetwork']:
+            if physical_network in [net['name'], net['id']]:
+                self.physical_network = net
+                self.result['physical_network'] = net['name']
+                return self._get_by_key(key, self.physical_network)
+        self.fail_json(msg="Physical Network '%s' not found" % physical_network)
+
     def get_network(self, key=None):
         """Return a network dictionary or the value of given key of."""
         if self.network:
@@ -406,10 +425,11 @@ class AnsibleCloudStack:
             'domainid': self.get_domain(key='id'),
             'projectid': self.get_project(key='id'),
             'zoneid': self.get_zone(key='id') if filter_zone else None,
+            'fetch_list': True,
         }
         vms = self.query_api('listVirtualMachines', **args)
         if vms:
-            for v in vms['virtualmachine']:
+            for v in vms:
                 if vm.lower() in [v['name'].lower(), v['displayname'].lower(), v['id']]:
                     self.vm = v
                     return self._get_by_key(key, self.vm)
@@ -538,7 +558,7 @@ class AnsibleCloudStack:
 
     def query_tags(self, resource, resource_type):
         args = {
-            'resourceids': resource['id'],
+            'resourceid': resource['id'],
             'resourcetype': resource_type,
         }
         tags = self.query_api('listTags', **args)
@@ -624,3 +644,16 @@ class AnsibleCloudStack:
             if 'tags' in resource:
                 self.result['tags'] = resource['tags']
         return self.result
+
+    def get_result_and_facts(self, facts_name, resource):
+        result = self.get_result(resource)
+
+        ansible_facts = {
+            facts_name: result.copy()
+        }
+        for k in ['diff', 'changed']:
+            if k in ansible_facts[facts_name]:
+                del ansible_facts[facts_name][k]
+
+        result.update(ansible_facts=ansible_facts)
+        return result

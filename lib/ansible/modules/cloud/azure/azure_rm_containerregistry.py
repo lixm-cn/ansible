@@ -15,7 +15,7 @@ DOCUMENTATION = '''
 ---
 module: azure_rm_containerregistry
 version_added: "2.5"
-short_description: Manage an Azure Container Registry.
+short_description: Manage an Azure Container Registry
 description:
     - Create, update and delete an Azure Container Registry.
 
@@ -27,11 +27,10 @@ options:
     name:
         description:
             - Name of the Container Registry.
-        default: null
         required: true
     state:
         description:
-            - Assert the state of the container registry. Use 'present' to create or update an container registry and 'absent' to delete it.
+            - Assert the state of the container registry. Use C(present) to create or update an container registry and C(absent) to delete it.
         default: present
         choices:
             - absent
@@ -39,14 +38,14 @@ options:
     location:
         description:
             - Valid azure location. Defaults to location of the resource group.
-        default: resource_group location
     admin_user_enabled:
         description:
             - If enabled, you can use the registry name as username and admin user access key as password to docker login to your container registry.
-        default: false
+        type: bool
+        default: no
     sku:
         description:
-            - Specifies the SKU to use. Currently can be either Basic, Standard or Premium.
+            - Specifies the SKU to use. Currently can be either C(Basic), C(Standard) or C(Premium).
         default: Standard
         choices:
             - Basic
@@ -58,17 +57,16 @@ extends_documentation_fragment:
     - azure_tags
 
 author:
-    - "Yawei Wang (@yaweiw)"
+    - Yawei Wang (@yaweiw)
 
 '''
 
 EXAMPLES = '''
     - name: Create an azure container registry
       azure_rm_containerregistry:
-        name: testacr1
+        name: myRegistry
         location: eastus
-        resource_group: testrg
-        state: present
+        resource_group: myResourceGroup
         admin_user_enabled: true
         sku: Premium
         tags:
@@ -77,74 +75,74 @@ EXAMPLES = '''
 
     - name: Remove an azure container registry
       azure_rm_containerregistry:
-        name: testacr2
-        resource_group: testrg
+        name: myRegistry
+        resource_group: myResourceGroup
         state: absent
 '''
 RETURN = '''
 id:
     description:
-        - Resource ID
+        - Resource ID.
     returned: always
     type: str
-    sample: /subscriptions/00000000-0000-0000-0000-000000000/resourceGroups/myResourceGroup/providers/Microsoft.ContainerRegistry/registries/myRegistry
+    sample: /subscriptions/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/resourceGroups/myResourceGroup/providers/Microsoft.ContainerRegistry/registries/myRegistry
 name:
     description:
-        - Registry name
+        - Registry name.
     returned: always
     type: str
     sample: myregistry
 location:
     description:
-        - Resource location
+        - Resource location.
     returned: always
     type: str
     sample: westus
 admin_user_enabled:
     description:
-        - Is admin user enabled
+        - Is admin user enabled.
     returned: always
     type: bool
     sample: true
 sku:
     description:
-        - SKU
+        - The SKU name of the container registry.
     returned: always
     type: str
     sample: Standard
 provisioning_state:
     description:
-        - Provisioning state
+        - Provisioning state.
     returned: always
     type: str
     sample: Succeeded
 login_server:
     description:
-        - Registry login server
+        - Registry login server.
     returned: always
     type: str
     sample: myregistry.azurecr.io
 credentials:
     description:
-        - Passwords defined for the registry
+        - Passwords defined for the registry.
     returned: always
     type: complex
     contains:
         password:
             description:
-                - password value
+                - password value.
             returned: when registry exists and C(admin_user_enabled) is set
             type: str
             sample: pass1value
         password2:
             description:
-                - password2 value
+                - password2 value.
             returned: when registry exists and C(admin_user_enabled) is set
             type: str
             sample: pass2value
 tags:
     description:
-        - Tags
+        - Tags assigned to the resource. Dictionary of string:string parirs.
     returned: always
     type: dict
 '''
@@ -219,23 +217,19 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
             ),
             state=dict(
                 type='str',
-                required=False,
                 default='present',
                 choices=['present', 'absent']
             ),
             location=dict(
-                type='str',
-                required=False
+                type='str'
             ),
             admin_user_enabled=dict(
                 type='bool',
-                required=False,
                 default=False
             ),
             sku=dict(
                 type='str',
-                required=False,
-                default='Basic',
+                default='Standard',
                 choices=['Basic', 'Standard', 'Premium']
             )
         )
@@ -246,7 +240,6 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
         self.state = None
         self.sku = None
         self.tags = None
-        self._containerregistry_mgmt_client = None
 
         self.results = dict(changed=False, state=dict())
 
@@ -316,9 +309,9 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
         try:
             if to_do != Actions.NoAction:
                 if to_do == Actions.Create:
-                    name_status = self.containerregistry_mgmt_client.registries.check_name_availability(self.name)
+                    name_status = self.containerregistry_client.registries.check_name_availability(self.name)
                     if name_status.name_available:
-                        poller = self.containerregistry_mgmt_client.registries.create(
+                        poller = self.containerregistry_client.registries.create(
                             resource_group_name=self.resource_group,
                             registry_name=self.name,
                             registry=Registry(
@@ -333,9 +326,9 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
                     else:
                         raise Exception("Invalid registry name. reason: " + name_status.reason + " message: " + name_status.message)
                 else:
-                    registry = self.containerregistry_mgmt_client.registries.get(self.resource_group, self.name)
+                    registry = self.containerregistry_client.registries.get(self.resource_group, self.name)
                     if registry is not None:
-                        poller = self.containerregistry_mgmt_client.registries.update(
+                        poller = self.containerregistry_client.registries.update(
                             resource_group_name=self.resource_group,
                             registry_name=self.name,
                             registry_update_parameters=RegistryUpdateParameters(
@@ -350,7 +343,7 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
                         raise Exception("Update registry failed as registry '" + self.name + "' doesn't exist.")
                 response = self.get_poller_result(poller)
                 if self.admin_user_enabled:
-                    credentials = self.containerregistry_mgmt_client.registries.list_credentials(self.resource_group, self.name)
+                    credentials = self.containerregistry_client.registries.list_credentials(self.resource_group, self.name)
                 else:
                     self.log('Cannot perform credential operations as admin user is disabled')
                     credentials = None
@@ -370,7 +363,7 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
         '''
         self.log("Deleting the container registry instance {0}".format(self.name))
         try:
-            self.containerregistry_mgmt_client.registries.delete(self.resource_group, self.name).wait()
+            self.containerregistry_client.registries.delete(self.resource_group, self.name).wait()
         except CloudError as e:
             self.log('Error attempting to delete the container registry instance.')
             self.fail("Error deleting the container registry instance: {0}".format(str(e)))
@@ -386,7 +379,7 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
         self.log("Checking if the container registry instance {0} is present".format(self.name))
         found = False
         try:
-            response = self.containerregistry_mgmt_client.registries.get(self.resource_group, self.name)
+            response = self.containerregistry_client.registries.get(self.resource_group, self.name)
             found = True
             self.log("Response : {0}".format(response))
             self.log("Container registry instance : {0} found".format(response.name))
@@ -398,7 +391,7 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
             response = None
         if found is True and self.admin_user_enabled is True:
             try:
-                credentials = self.containerregistry_mgmt_client.registries.list_credentials(self.resource_group, self.name)
+                credentials = self.containerregistry_client.registries.list_credentials(self.resource_group, self.name)
             except CloudError as e:
                 self.fail('List registry credentials failed: {0}'.format(str(e)))
                 credentials = None
@@ -408,22 +401,11 @@ class AzureRMContainerRegistry(AzureRMModuleBase):
             return None
         return create_containerregistry_dict(response, credentials)
 
-    @property
-    def containerregistry_mgmt_client(self):
-        self.log('Getting container registry mgmt client')
-        if not self._containerregistry_mgmt_client:
-            self._containerregistry_mgmt_client = self.get_mgmt_svc_client(
-                ContainerRegistryManagementClient,
-                base_url=self._cloud_environment.endpoints.resource_manager,
-                api_version='2017-10-01'
-            )
-
-        return self._containerregistry_mgmt_client
-
 
 def main():
     """Main execution"""
     AzureRMContainerRegistry()
+
 
 if __name__ == '__main__':
     main()

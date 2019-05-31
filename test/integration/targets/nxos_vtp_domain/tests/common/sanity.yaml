@@ -3,12 +3,23 @@
 - debug: msg="Using provider={{ connection.transport }}"
   when: ansible_connection == "local"
 
+- set_fact: vtp_run="true"
+- set_fact: vtp_run="false"
+  when: platform is search('N3K-F|N9K-F')
+
 - block:
+  - name: disable feature vtp
+    nxos_feature:
+      feature: vtp
+      provider: "{{ connection }}"
+      state: disabled
+    ignore_errors: yes
+
   - name: enable feature vtp
     nxos_feature:
       feature: vtp
-      state: enabled
       provider: "{{ connection }}"
+      state: enabled
 
   - name: configure vtp domain
     nxos_vtp_domain: &configure
@@ -28,11 +39,13 @@
       that:
         - "result.changed == false"
 
+  when: vtp_run
+
   always:
   - name: disable feature vtp
     nxos_feature:
       feature: vtp
-      state: disabled
       provider: "{{ connection }}"
+      state: disabled
 
 - debug: msg="END connection={{ ansible_connection }} nxos_vtp_domain sanity test"

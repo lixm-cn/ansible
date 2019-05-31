@@ -148,7 +148,7 @@ from pynsot.client import get_api_client
 from pynsot.app import HttpServerError
 from click.exceptions import UsageError
 
-from six import string_types
+from ansible.module_utils.six import string_types
 
 
 def warning(*objs):
@@ -254,7 +254,7 @@ class NSoTInventory(object):
         obj[group]['vars'] = hostvars
         try:
             assert isinstance(query, string_types)
-        except:
+        except Exception:
             sys.exit('ERR: Group queries must be a single string\n'
                      '  Group: %s\n'
                      '  Query: %s\n' % (group, query)
@@ -338,6 +338,7 @@ def main():
         print(client.do_list())
     elif args.host:
         print(client.do_host(args.host))
+
 
 if __name__ == '__main__':
     main()

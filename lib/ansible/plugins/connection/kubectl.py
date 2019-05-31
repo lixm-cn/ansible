@@ -38,6 +38,14 @@ DOCUMENTATION = """
       - kubectl (go binary)
 
     options:
+      kubectl_pod:
+        description:
+          - Pod name. Required when the host name does not match pod name.
+        default: ''
+        vars:
+          - name: ansible_kubectl_pod
+        env:
+          - name: K8S_AUTH_POD
       kubectl_container:
         description:
           - Container name. Required when a pod contains more than one container.
@@ -64,7 +72,7 @@ DOCUMENTATION = """
           - name: K8S_AUTH_EXTRA_ARGS
       kubectl_kubeconfig:
         description:
-          - Path to a kubectl config file. Defaults to I(~/.kube/conig)
+          - Path to a kubectl config file. Defaults to I(~/.kube/config)
         default: ''
         vars:
           - name: ansible_kubectl_kubeconfig
@@ -95,6 +103,7 @@ DOCUMENTATION = """
         default: ''
         vars:
           - name: ansible_kubectl_username
+          - name: ansible_kubectl_user
         env:
           - name: K8S_AUTH_USERNAME
       kubectl_password:
@@ -114,38 +123,46 @@ DOCUMENTATION = """
         env:
           - name: K8S_AUTH_TOKEN
           - name: K8S_AUTH_API_KEY
-      kubectl_cert_file:
+      client_cert:
         description:
           - Path to a certificate used to authenticate with the API.
         default: ''
         vars:
           - name: ansible_kubectl_cert_file
+          - name: ansible_kubectl_client_cert
         env:
           - name: K8S_AUTH_CERT_FILE
-      kubectl_key_file:
+        aliases: [ kubectl_cert_file ]
+      client_key:
         description:
           - Path to a key file used to authenticate with the API.
         default: ''
         vars:
           - name: ansible_kubectl_key_file
+          - name: ansible_kubectl_client_key
         env:
           - name: K8S_AUTH_KEY_FILE
-      kubectl_ssl_ca_cert:
+        aliases: [ kubectl_key_file ]
+      ca_cert:
         description:
           - Path to a CA certificate used to authenticate with the API.
         default: ''
         vars:
-          - name: ansible_kubectl_cert_file
+          - name: ansible_kubectl_ssl_ca_cert
+          - name: ansible_kubectl_ca_cert
         env:
           - name: K8S_AUTH_SSL_CA_CERT
-      kubectl_verify_ssl:
+        aliases: [ kubectl_ssl_ca_cert ]
+      validate_certs:
         description:
           - Whether or not to verify the API server's SSL certificate. Defaults to I(true).
         default: ''
         vars:
           - name: ansible_kubectl_verify_ssl
+          - name: ansible_kubectl_validate_certs
         env:
-          - name: K8s_AUTH_VERIFY_SSL
+          - name: K8S_AUTH_VERIFY_SSL
+        aliases: [ kubectl_verify_ssl ]
 """
 
 import distutils.spawn
@@ -159,13 +176,9 @@ from ansible.errors import AnsibleError, AnsibleFileNotFound
 from ansible.module_utils.six.moves import shlex_quote
 from ansible.module_utils._text import to_bytes
 from ansible.plugins.connection import ConnectionBase, BUFSIZE
+from ansible.utils.display import Display
 
-
-try:
-    from __main__ import display
-except ImportError:
-    from ansible.utils.display import Display
-    display = Display()
+display = Display()
 
 
 CONNECTION_TRANSPORT = 'kubectl'
@@ -178,10 +191,10 @@ CONNECTION_OPTIONS = {
     'kubectl_host': '--server',
     'kubectl_username': '--username',
     'kubectl_password': '--password',
-    'kubectl_cert_file': '--client-certificate',
-    'kubectl_key_file': '--client-key',
-    'kubectl_ssl_ca_cert': '--certificate-authority',
-    'kubectl_verify_ssl': '--insecure-skip-tls-verify',
+    'client_cert': '--client-certificate',
+    'client_key': '--client-key',
+    'ca_cert': '--certificate-authority',
+    'validate_certs': '--insecure-skip-tls-verify',
     'kubectl_token': '--token'
 }
 
@@ -193,7 +206,6 @@ class Connection(ConnectionBase):
     connection_options = CONNECTION_OPTIONS
     documentation = DOCUMENTATION
     has_pipelining = True
-    become_methods = frozenset(C.BECOME_METHODS)
     transport_cmd = None
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
@@ -217,7 +229,7 @@ class Connection(ConnectionBase):
         # Build command options based on doc string
         doc_yaml = AnsibleLoader(self.documentation).get_single_data()
         for key in doc_yaml.get('options'):
-            if key.endswith('verify_ssl') and self.get_option(key) is not None:
+            if key.endswith('verify_ssl') and self.get_option(key) != '':
                 # Translate verify_ssl to skip_verify_ssl, and output as string
                 skip_verify_ssl = not self.get_option(key)
                 local_cmd.append(u'{0}={1}'.format(self.connection_options[key], str(skip_verify_ssl).lower()))
@@ -229,8 +241,11 @@ class Connection(ConnectionBase):
         if self.get_option(extra_args_name):
             local_cmd += self.get_option(extra_args_name).split(' ')
 
+        pod = self.get_option(u'{0}_pod'.format(self.transport))
+        if not pod:
+            pod = self._play_context.remote_addr
         # -i is needed to keep stdin open which allows pipelining to work
-        local_cmd += ['exec', '-i', self._play_context.remote_addr]
+        local_cmd += ['exec', '-i', pod]
 
         # if the pod has more than one container, then container is required
         container_arg_name = u'{0}_container'.format(self.transport)
@@ -289,9 +304,13 @@ class Connection(ConnectionBase):
         out_path = shlex_quote(out_path)
         # kubectl doesn't have native support for copying files into
         # running containers, so we use kubectl exec to implement this
-        args = self._build_exec_cmd([self._play_context.executable, "-c", "dd of=%s bs=%s" % (out_path, BUFSIZE)])
-        args = [to_bytes(i, errors='surrogate_or_strict') for i in args]
         with open(to_bytes(in_path, errors='surrogate_or_strict'), 'rb') as in_file:
+            if not os.fstat(in_file.fileno()).st_size:
+                count = ' count=0'
+            else:
+                count = ''
+            args = self._build_exec_cmd([self._play_context.executable, "-c", "dd of=%s bs=%s%s" % (out_path, BUFSIZE, count)])
+            args = [to_bytes(i, errors='surrogate_or_strict') for i in args]
             try:
                 p = subprocess.Popen(args, stdin=in_file,
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)

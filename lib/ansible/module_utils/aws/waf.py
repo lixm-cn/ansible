@@ -30,6 +30,7 @@ This module adds shared support for Web Application Firewall modules
 """
 
 from ansible.module_utils.ec2 import camel_dict_to_snake_dict, AWSRetry
+from ansible.module_utils.aws.waiters import get_waiter
 
 try:
     import botocore
@@ -162,14 +163,37 @@ def list_rules_with_backoff(client):
 
 
 @AWSRetry.backoff(tries=5, delay=5, backoff=2.0)
+def list_regional_rules_with_backoff(client):
+    resp = client.list_rules()
+    rules = []
+    while resp:
+        rules += resp['Rules']
+        resp = client.list_rules(NextMarker=resp['NextMarker']) if 'NextMarker' in resp else None
+    return rules
+
+
+@AWSRetry.backoff(tries=5, delay=5, backoff=2.0)
 def list_web_acls_with_backoff(client):
     paginator = client.get_paginator('list_web_acls')
     return paginator.paginate().build_full_result()['WebACLs']
 
 
+@AWSRetry.backoff(tries=5, delay=5, backoff=2.0)
+def list_regional_web_acls_with_backoff(client):
+    resp = client.list_web_acls()
+    acls = []
+    while resp:
+        acls += resp['WebACLs']
+        resp = client.list_web_acls(NextMarker=resp['NextMarker']) if 'NextMarker' in resp else None
+    return acls
+
+
 def list_web_acls(client, module):
     try:
-        return list_web_acls_with_backoff(client)
+        if client.__class__.__name__ == 'WAF':
+            return list_web_acls_with_backoff(client)
+        elif client.__class__.__name__ == 'WAFRegional':
+            return list_regional_web_acls_with_backoff(client)
     except (botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError) as e:
         module.fail_json_aws(e, msg="Couldn't obtain web acls")
 
@@ -180,3 +204,16 @@ def get_change_token(client, module):
         return token['ChangeToken']
     except (botocore.exceptions.ClientError, botocore.exceptions.BotoCoreError) as e:
         module.fail_json_aws(e, msg="Couldn't obtain change token")
+
+
+@AWSRetry.backoff(tries=10, delay=2, backoff=2.0, catch_extra_error_codes=['WAFStaleDataException'])
+def run_func_with_change_token_backoff(client, module, params, func, wait=False):
+    params['ChangeToken'] = get_change_token(client, module)
+    result = func(**params)
+    if wait:
+        get_waiter(
+            client, 'change_token_in_sync',
+        ).wait(
+            ChangeToken=result['ChangeToken']
+        )
+    return result

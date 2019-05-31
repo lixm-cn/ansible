@@ -1,25 +1,11 @@
 #!powershell
-# This file is part of Ansible
-#
-# Copyright 2015, Peter Mounce <public@neverrunwithscissors.com>
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+
+# Copyright: (c) 2015, Peter Mounce <public@neverrunwithscissors.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+#Requires -Module Ansible.ModuleUtils.Legacy
 
 $ErrorActionPreference = "Stop"
-
-# WANT_JSON
-# POWERSHELL_COMMON
 
 Function Find-Command
 {
@@ -41,12 +27,12 @@ Function Find-WebPiCmd
     [CmdletBinding()]
     param()
     $p = Find-Command "webpicmd.exe"
-    if ($p -ne $null)
+    if ($null -ne $p)
     {
         return $p
     }
     $a = Find-Command "c:\programdata\chocolatey\bin\webpicmd.exe"
-    if ($a -ne $null)
+    if ($null -ne $a)
     {
         return $a
     }

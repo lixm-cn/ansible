@@ -47,14 +47,11 @@ import os
 import time
 from optparse import OptionParser
 import subprocess
-import ConfigParser
+import json
 
-from six import iteritems
+from ansible.module_utils.six import iteritems
+from ansible.module_utils.six.moves import configparser as ConfigParser
 
-try:
-    import json
-except:
-    import simplejson as json
 
 base_dir = os.path.dirname(os.path.realpath(__file__))
 default_ini_file = os.path.join(base_dir, "spacewalk.ini")

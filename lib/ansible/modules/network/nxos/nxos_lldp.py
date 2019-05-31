@@ -31,6 +31,7 @@ options:
         else if it is I(absent) it will be disabled.
     default: present
     choices: ['present', 'absent']
+extends_documentation_fragment: nxos
 """
 
 EXAMPLES = """
@@ -98,6 +99,9 @@ def main():
     result['commands'] = commands
 
     if commands:
+        # On N35 A8 images, some features return a yes/no prompt
+        # on enablement or disablement. Bypass using terminal dont-ask
+        commands.insert(0, 'terminal dont-ask')
         if not module.check_mode:
             load_config(module, commands)
 

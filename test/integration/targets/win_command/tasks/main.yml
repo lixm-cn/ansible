@@ -28,7 +28,7 @@
     - cmdout is not changed
     - cmdout.cmd == 'bogus_command1234'
     - cmdout.rc == 2
-    - "'Could not locate the following executable bogus_command1234' in cmdout.msg"
+    - "\"Could not find file 'bogus_command1234.exe'.\" in cmdout.msg"
 
 - name: execute something with error output
   win_command: cmd /c "echo some output & echo some error 1>&2"
@@ -77,17 +77,34 @@
     - cmdout is skipped
     - cmdout.msg is search('exists')
 
+- name: get path of pagefile
+  win_shell: |
+    $pagefile = $null
+    $cs = Get-CimInstance -ClassName Win32_ComputerSystem
+    if ($cs.AutomaticManagedPagefile) {
+        $pagefile = "$($env:SystemRoot.Substring(0, 1)):\pagefile.sys"
+    } else {
+        $pf = Get-CimInstance -ClassName Win32_PageFileSetting
+        if ($pf -ne $null) {
+            $pagefile = $pf[0].Name
+        }
+    }
+    $pagefile
+  register: pagefile_path
+
 - name: test creates with hidden system file, should skip
   win_command: echo no
   args:
-    creates: C:\pagefile.sys
+    creates: '{{pagefile_path.stdout_lines[0]}}'
   register: cmdout
+  when: pagefile_path.stdout_lines|count != 0
 
 - name: validate result
   assert:
     that:
     - cmdout is skipped
     - cmdout.msg is search('exists')
+  when: pagefile_path.stdout_lines|count != 0
 
 - name: ensure testfile is still present
   win_stat:
@@ -154,7 +171,7 @@
 
 - name: download binary the outputs argv to stdout
   win_get_url:
-    url: https://s3.amazonaws.com/ansible-ci-files/test/integration/roles/test_win_module_utils/PrintArgv.exe
+    url: https://ansible-ci-files.s3.amazonaws.com/test/integration/roles/test_win_module_utils/PrintArgv.exe
     dest: C:\ansible testing\PrintArgv.exe
 
 - name: call argv binary with absolute path
@@ -205,3 +222,16 @@
     - cmdout.stdout_lines|count == 1
     - cmdout.stdout_lines[0] == "some input"
     - cmdout.stderr == ""
+
+- name: echo some non ascii characters
+  win_command: cmd.exe /c echo über den Fußgängerübergang gehen
+  register: nonascii_output
+
+- name: assert echo some non ascii characters
+  assert:
+    that:
+    - nonascii_output is changed
+    - nonascii_output.rc == 0
+    - nonascii_output.stdout_lines|count == 1
+    - nonascii_output.stdout_lines[0] == 'über den Fußgängerübergang gehen'
+    - nonascii_output.stderr == ''

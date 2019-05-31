@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2017, Ansible by Red Hat, inc
+# Copyright: (c) 2017, Ansible by Red Hat, inc
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -17,7 +17,7 @@ DOCUMENTATION = """
 module: eos_static_route
 version_added: "2.5"
 author: "Trishna Guha (@trishnaguha)"
-short_description: Manage static IP routes on Arist EOS network devices
+short_description: Manage static IP routes on Arista EOS network devices
 description:
   - This module provides declarative management of static
     IP routes on Arista EOS network devices.
@@ -33,6 +33,11 @@ options:
     description:
       - Next hop IP of the static route.
     required: true
+  vrf:
+    description:
+      - VRF for static route.
+    default: default
+    version_added: 2.9
   admin_distance:
     description:
       - Admin distance of the static route.
@@ -44,6 +49,7 @@ options:
       - State of the static route configuration.
     default: present
     choices: ['present', 'absent']
+extends_documentation_fragment: eos
 """
 
 EXAMPLES = """
@@ -79,13 +85,31 @@ commands:
     - ip route 10.0.2.0/24 10.8.38.1 3
     - no ip route 10.0.2.0/24 10.8.38.1
 """
+
+import re
+
 from copy import deepcopy
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.network.common.utils import remove_default_spec
-from ansible.module_utils.network.common.utils import validate_ip_address, validate_prefix
-from ansible.module_utils.network.eos.eos import load_config, run_commands
+from ansible.module_utils.network.common.utils import is_masklen, validate_ip_address
+from ansible.module_utils.network.common.utils import remove_default_spec, validate_prefix
+from ansible.module_utils.network.eos.eos import get_config, load_config
 from ansible.module_utils.network.eos.eos import eos_argument_spec, check_args
+
+
+def is_address(value):
+    if value:
+        address = value.split('/')
+        if is_masklen(address[1]) and validate_ip_address(address[0]):
+            return True
+    return False
+
+
+def is_hop(value):
+    if value:
+        if validate_ip_address(value):
+            return True
+    return False
 
 
 def map_obj_to_commands(updates, module):
@@ -96,13 +120,20 @@ def map_obj_to_commands(updates, module):
         address = w['address']
         next_hop = w['next_hop']
         admin_distance = w['admin_distance']
+        vrf = w['vrf']
         state = w['state']
         del w['state']
 
         if state == 'absent' and w in have:
-            commands.append('no ip route %s %s' % (address, next_hop))
+            if vrf == 'default':
+                commands.append('no ip route %s %s' % (address, next_hop))
+            else:
+                commands.append('no ip route vrf %s %s %s' % (vrf, address, next_hop))
         elif state == 'present' and w not in have:
-            commands.append('ip route %s %s %d' % (address, next_hop, admin_distance))
+            if vrf == 'default':
+                commands.append('ip route %s %s %d' % (address, next_hop, admin_distance))
+            else:
+                commands.append('ip route vrf %s %s %s %d' % (vrf, address, next_hop, admin_distance))
 
     return commands
 
@@ -126,7 +157,8 @@ def map_params_to_obj(module, required_together=None):
             'address': module.params['address'].strip(),
             'next_hop': module.params['next_hop'].strip(),
             'admin_distance': module.params['admin_distance'],
-            'state': module.params['state']
+            'state': module.params['state'],
+            'vrf': module.params['vrf']
         })
 
     return obj
@@ -136,20 +168,50 @@ def map_config_to_obj(module):
     objs = []
 
     try:
-        out = run_commands(module, ['show ip route | json'])[0]
+        out = get_config(module, flags=['| include ip.route'])
     except IndexError:
-        out = {}
+        out = ''
     if out:
-        try:
-            vrfs = out['vrfs']['default']['routes']
-        except (AttributeError, KeyError, TypeError):
-            vrfs = {}
-    if vrfs:
-        for address in vrfs:
+        lines = out.splitlines()
+        for line in lines:
             obj = {}
-            obj['address'] = address
-            obj['admin_distance'] = vrfs[address].get('preference')
-            obj['next_hop'] = vrfs[address].get('vias')[0].get('nexthopAddr')
+            add_match = re.search(r'ip route ([\d\./]+)', line, re.M)
+            if add_match:
+                obj['vrf'] = 'default'
+                address = add_match.group(1)
+                if is_address(address):
+                    obj['address'] = address
+                hop_match = re.search(r'ip route {0} ([\d\./]+)'.format(address), line, re.M)
+                if hop_match:
+                    hop = hop_match.group(1)
+                    if is_hop(hop):
+                        obj['next_hop'] = hop
+                    dist_match = re.search(r'ip route {0} {1} (\d+)'.format(address, hop), line, re.M)
+                    if dist_match:
+                        distance = dist_match.group(1)
+                        obj['admin_distance'] = int(distance)
+                    else:
+                        obj['admin_distance'] = 1
+
+            vrf_match = re.search(r'ip route vrf ([\w]+) ([\d\./]+)', line, re.M)
+            if vrf_match:
+                vrf = vrf_match.group(1)
+                obj['vrf'] = vrf
+                address = vrf_match.group(2)
+                if is_address(address):
+                    obj['address'] = address
+                hop_vrf_match = re.search(r'ip route vrf {0} {1} ([\d\./]+)'.format(vrf, address), line, re.M)
+                if hop_vrf_match:
+                    hop = hop_vrf_match.group(1)
+                    if is_hop(hop):
+                        obj['next_hop'] = hop
+                    dist_vrf_match = re.search(r'ip route vrf {0} {1} {2} (\d+)'.format(vrf, address, hop), line, re.M)
+                    if dist_vrf_match:
+                        distance = dist_vrf_match.group(1)
+                        obj['admin_distance'] = int(distance)
+                    else:
+                        obj['admin_distance'] = 1
+
             objs.append(obj)
 
     return objs
@@ -161,6 +223,7 @@ def main():
     element_spec = dict(
         address=dict(type='str', aliases=['prefix']),
         next_hop=dict(type='str'),
+        vrf=dict(type='str', default='default'),
         admin_distance=dict(default=1, type='int'),
         state=dict(default='present', choices=['present', 'absent'])
     )
@@ -194,7 +257,7 @@ def main():
 
     if address and prefix:
         if '/' not in address or not validate_ip_address(address.split('/')[0]):
-            module.fail_json(msg='{} is not a valid IP address'.format(address))
+            module.fail_json(msg='{0} is not a valid IP address'.format(address))
 
         if not validate_prefix(prefix):
             module.fail_json(msg='Length of prefix should be between 0 and 32 bits')
@@ -218,6 +281,7 @@ def main():
         result['changed'] = True
 
     module.exit_json(**result)
+
 
 if __name__ == '__main__':
     main()

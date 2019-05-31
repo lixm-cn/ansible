@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_pool
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of Pool Avi RESTful Object
 description:
@@ -45,13 +45,27 @@ options:
     a_pool:
         description:
             - Name of container cloud application that constitutes a pool in a a-b pool configuration, if different from vs app.
+            - Field deprecated in 18.1.2.
     ab_pool:
         description:
             - A/b pool configuration.
+            - Field deprecated in 18.1.2.
     ab_priority:
         description:
             - Priority of this pool in a a-b pool pair.
             - Internally used.
+            - Field deprecated in 18.1.2.
+    analytics_policy:
+        description:
+            - Determines analytics settings for the pool.
+            - Field introduced in 18.1.5, 18.2.1.
+        version_added: "2.9"
+    analytics_profile_ref:
+        description:
+            - Specifies settings related to analytics.
+            - It is a reference to an object of type analyticsprofile.
+            - Field introduced in 18.1.4,18.2.1.
+        version_added: "2.9"
     apic_epg_name:
         description:
             - Synchronize cisco apic epg members with pool servers.
@@ -75,13 +89,13 @@ options:
         description:
             - Inline estimation of capacity of servers.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     capacity_estimation_ttfb_thresh:
         description:
             - The maximum time-to-first-byte of a server.
             - Allowed values are 1-5000.
             - Special values are 0 - 'automatic'.
             - Default value when not specified in API or module is interpreted by Avi Controller as 0.
-            - Units(MILLISECONDS).
     cloud_config_cksum:
         description:
             - Checksum of cloud configuration for pool.
@@ -89,6 +103,11 @@ options:
     cloud_ref:
         description:
             - It is a reference to an object of type cloud.
+    conn_pool_properties:
+        description:
+            - Connnection pool properties.
+            - Field introduced in 18.2.1.
+        version_added: "2.9"
     connection_ramp_duration:
         description:
             - Duration for which new connections will be gradually ramped up to a server recently brought online.
@@ -96,7 +115,6 @@ options:
             - Allowed values are 1-300.
             - Special values are 0 - 'immediate'.
             - Default value when not specified in API or module is interpreted by Avi Controller as 10.
-            - Units(MIN).
     created_by:
         description:
             - Creator name.
@@ -106,6 +124,16 @@ options:
             - The ssl checkbox enables avi to server encryption.
             - Allowed values are 1-65535.
             - Default value when not specified in API or module is interpreted by Avi Controller as 80.
+    delete_server_on_dns_refresh:
+        description:
+            - Indicates whether existing ips are disabled(false) or deleted(true) on dns hostname refreshdetail -- on a dns refresh, some ips set on pool may
+            - no longer be returned by the resolver.
+            - These ips are deleted from the pool when this knob is set to true.
+            - They are disabled, if the knob is set to false.
+            - Field introduced in 18.2.3.
+            - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        version_added: "2.9"
+        type: bool
     description:
         description:
             - A description of the pool.
@@ -116,11 +144,13 @@ options:
     east_west:
         description:
             - Inherited config from virtualservice.
+        type: bool
     enabled:
         description:
             - Enable or disable the pool.
             - Disabling will terminate all open connections and pause health monitors.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     external_autoscale_groups:
         description:
             - Names of external auto-scale groups for pool servers.
@@ -135,7 +165,6 @@ options:
             - Periodicity of feedback for fewest tasks server selection algorithm.
             - Allowed values are 1-300.
             - Default value when not specified in API or module is interpreted by Avi Controller as 10.
-            - Units(SEC).
     graceful_disable_timeout:
         description:
             - Used to gracefully disable a server.
@@ -143,12 +172,12 @@ options:
             - Allowed values are 1-7200.
             - Special values are 0 - 'immediate', -1 - 'infinite'.
             - Default value when not specified in API or module is interpreted by Avi Controller as 1.
-            - Units(MIN).
     gslb_sp_enabled:
         description:
             - Indicates if the pool is a site-persistence pool.
             - Field introduced in 17.2.1.
         version_added: "2.5"
+        type: bool
     health_monitor_refs:
         description:
             - Verify server health by applying one or more health monitors.
@@ -161,11 +190,13 @@ options:
             - Enable common name check for server certificate.
             - If enabled and no explicit domain name is specified, avi will use the incoming host header to do the match.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     inline_health_monitor:
         description:
             - The passive monitor will monitor client to server connections and requests and adjust traffic load to servers based on successful responses.
             - This may alter the expected behavior of the lb method, such as round robin.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     ipaddrgroup_ref:
         description:
             - Use list of servers from ip address group.
@@ -175,7 +206,7 @@ options:
             - The load balancing algorithm will pick a server within the pool's list of available servers.
             - Enum options - LB_ALGORITHM_LEAST_CONNECTIONS, LB_ALGORITHM_ROUND_ROBIN, LB_ALGORITHM_FASTEST_RESPONSE, LB_ALGORITHM_CONSISTENT_HASH,
             - LB_ALGORITHM_LEAST_LOAD, LB_ALGORITHM_FEWEST_SERVERS, LB_ALGORITHM_RANDOM, LB_ALGORITHM_FEWEST_TASKS, LB_ALGORITHM_NEAREST_SERVER,
-            - LB_ALGORITHM_CORE_AFFINITY.
+            - LB_ALGORITHM_CORE_AFFINITY, LB_ALGORITHM_TOPOLOGY.
             - Default value when not specified in API or module is interpreted by Avi Controller as LB_ALGORITHM_LEAST_CONNECTIONS.
     lb_algorithm_consistent_hash_hdr:
         description:
@@ -191,7 +222,8 @@ options:
         description:
             - Criteria used as a key for determining the hash between the client and  server.
             - Enum options - LB_ALGORITHM_CONSISTENT_HASH_SOURCE_IP_ADDRESS, LB_ALGORITHM_CONSISTENT_HASH_SOURCE_IP_ADDRESS_AND_PORT,
-            - LB_ALGORITHM_CONSISTENT_HASH_URI, LB_ALGORITHM_CONSISTENT_HASH_CUSTOM_HEADER, LB_ALGORITHM_CONSISTENT_HASH_CUSTOM_STRING.
+            - LB_ALGORITHM_CONSISTENT_HASH_URI, LB_ALGORITHM_CONSISTENT_HASH_CUSTOM_HEADER, LB_ALGORITHM_CONSISTENT_HASH_CUSTOM_STRING,
+            - LB_ALGORITHM_CONSISTENT_HASH_CALLID.
             - Default value when not specified in API or module is interpreted by Avi Controller as LB_ALGORITHM_CONSISTENT_HASH_SOURCE_IP_ADDRESS.
     lookup_server_by_name:
         description:
@@ -199,6 +231,7 @@ options:
             - Field introduced in 17.1.11,17.2.4.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
         version_added: "2.5"
+        type: bool
     max_concurrent_connections_per_server:
         description:
             - The maximum number of concurrent connections allowed to each server within the pool.
@@ -208,6 +241,16 @@ options:
     max_conn_rate_per_server:
         description:
             - Rate limit connections to each server.
+    min_health_monitors_up:
+        description:
+            - Minimum number of health monitors in up state to mark server up.
+            - Field introduced in 18.2.1, 17.2.12.
+        version_added: "2.9"
+    min_servers_up:
+        description:
+            - Minimum number of servers in up state for marking the pool up.
+            - Field introduced in 18.2.1, 17.2.12.
+        version_added: "2.9"
     name:
         description:
             - The name of the pool.
@@ -233,6 +276,7 @@ options:
     prst_hdr_name:
         description:
             - Header name for custom header persistence.
+            - Field deprecated in 18.1.2.
     request_queue_depth:
         description:
             - Minimum number of requests to be queued when pool is full.
@@ -241,24 +285,27 @@ options:
         description:
             - Enable request queue when pool is full.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     rewrite_host_header_to_server_name:
         description:
             - Rewrite incoming host header to server name of the server to which the request is proxied.
             - Enabling this feature rewrites host header for requests to all servers in the pool.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     rewrite_host_header_to_sni:
         description:
             - If sni server name is specified, rewrite incoming host header to the sni server name.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     server_auto_scale:
         description:
             - Server autoscale.
             - Not used anymore.
-            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+            - Field deprecated in 18.1.2.
+        type: bool
     server_count:
         description:
-            - Number of server_count.
-            - Default value when not specified in API or module is interpreted by Avi Controller as 0.
+            - Field deprecated in 18.2.1.
     server_name:
         description:
             - Fully qualified dns hostname which will be used in the tls sni extension in server connections if sni is enabled.
@@ -266,15 +313,32 @@ options:
     server_reselect:
         description:
             - Server reselect configuration for http requests.
+    server_timeout:
+        description:
+            - Server timeout value specifies the time within which a server connection needs to be established and a request-response exchange completes
+            - between avi and the server.
+            - Value of 0 results in using default timeout of 60 minutes.
+            - Allowed values are 0-3600000.
+            - Field introduced in 18.1.5,18.2.1.
+            - Default value when not specified in API or module is interpreted by Avi Controller as 0.
+        version_added: "2.9"
     servers:
         description:
             - The pool directs load balanced traffic to this list of destination servers.
             - The servers can be configured by ip address, name, network or via ip address group.
+    service_metadata:
+        description:
+            - Metadata pertaining to the service provided by this pool.
+            - In openshift/kubernetes environments, app metadata info is stored.
+            - Any user input to this field will be overwritten by avi vantage.
+            - Field introduced in 17.2.14,18.1.5,18.2.1.
+        version_added: "2.9"
     sni_enabled:
         description:
             - Enable tls sni for server connections.
             - If disabled, avi will not send the sni extension as part of the handshake.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     ssl_key_and_certificate_ref:
         description:
             - Service engines will present a client ssl certificate to the server.
@@ -295,6 +359,7 @@ options:
             - Do not translate the client's destination port when sending the connection to the server.
             - The pool or servers specified service port will still be used for health monitoring.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     uuid:
         description:
             - Uuid of the pool.
@@ -352,7 +417,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -367,6 +432,8 @@ def main():
         a_pool=dict(type='str',),
         ab_pool=dict(type='dict',),
         ab_priority=dict(type='int',),
+        analytics_policy=dict(type='dict',),
+        analytics_profile_ref=dict(type='str',),
         apic_epg_name=dict(type='str',),
         application_persistence_profile_ref=dict(type='str',),
         autoscale_launch_config_ref=dict(type='str',),
@@ -376,9 +443,11 @@ def main():
         capacity_estimation_ttfb_thresh=dict(type='int',),
         cloud_config_cksum=dict(type='str',),
         cloud_ref=dict(type='str',),
+        conn_pool_properties=dict(type='dict',),
         connection_ramp_duration=dict(type='int',),
         created_by=dict(type='str',),
         default_server_port=dict(type='int',),
+        delete_server_on_dns_refresh=dict(type='bool',),
         description=dict(type='str',),
         domain_name=dict(type='list',),
         east_west=dict(type='bool',),
@@ -399,6 +468,8 @@ def main():
         lookup_server_by_name=dict(type='bool',),
         max_concurrent_connections_per_server=dict(type='int',),
         max_conn_rate_per_server=dict(type='dict',),
+        min_health_monitors_up=dict(type='int',),
+        min_servers_up=dict(type='int',),
         name=dict(type='str', required=True),
         networks=dict(type='list',),
         nsx_securitygroup=dict(type='list',),
@@ -413,7 +484,9 @@ def main():
         server_count=dict(type='int',),
         server_name=dict(type='str',),
         server_reselect=dict(type='dict',),
+        server_timeout=dict(type='int',),
         servers=dict(type='list',),
+        service_metadata=dict(type='str',),
         sni_enabled=dict(type='bool',),
         ssl_key_and_certificate_ref=dict(type='str',),
         ssl_profile_ref=dict(type='str',),
@@ -428,10 +501,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'pool',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

@@ -46,6 +46,7 @@ options:
   enabled:
     description:
       - Interface link status.
+    type: bool
   speed:
     description:
       - Interface link speed.
@@ -83,6 +84,7 @@ options:
         operationally up and C(down) means present and operationally C(down)
     default: present
     choices: ['present', 'absent', 'up', 'down']
+extends_documentation_fragment: vyos
 """
 
 EXAMPLES = """
@@ -202,6 +204,8 @@ def map_obj_to_commands(updates):
                     value = w.get(item)
 
                     if value and value != obj_in_have.get(item):
+                        if item == 'description':
+                            value = "\'" + str(value) + "\'"
                         commands.append(set_interface + ' ' + item + ' ' + str(value))
 
                 if disable and not obj_in_have.get('disable', False):
@@ -213,6 +217,8 @@ def map_obj_to_commands(updates):
                 for item in params:
                     value = w.get(item)
                     if value:
+                        if item == 'description':
+                            value = "\'" + str(value) + "\'"
                         commands.append(set_interface + ' ' + item + ' ' + str(value))
 
                 if disable:
@@ -242,7 +248,7 @@ def map_config_to_obj(module):
                 if match:
                     param = match.group(1)
                     if param == 'description':
-                        match = re.search(r'description (\S+)', line, re.M)
+                        match = re.search(r'description (.+)', line, re.M)
                         description = match.group(1).strip("'")
                         interface['description'] = description
                     elif param == 'speed':
@@ -305,11 +311,9 @@ def check_declarative_intent_params(module, want, result):
     have_neighbors = None
     for w in want:
         want_state = w.get('state')
-        want_tx_rate = w.get('tx_rate')
-        want_rx_rate = w.get('rx_rate')
         want_neighbors = w.get('neighbors')
 
-        if want_state not in ('up', 'down') and not want_tx_rate and not want_rx_rate and not want_neighbors:
+        if want_state not in ('up', 'down') and not want_neighbors:
             continue
 
         if result['changed']:
@@ -394,7 +398,7 @@ def main():
     required_one_of = [['name', 'aggregate']]
     mutually_exclusive = [['name', 'aggregate']]
 
-    required_together = (['speed', 'duplex'])
+    required_together = [['speed', 'duplex']]
     module = AnsibleModule(argument_spec=argument_spec,
                            required_one_of=required_one_of,
                            mutually_exclusive=mutually_exclusive,
@@ -428,6 +432,7 @@ def main():
         msg = 'One or more conditional statements have not been satisfied'
         module.fail_json(msg=msg, failed_conditions=failed_conditions)
     module.exit_json(**result)
+
 
 if __name__ == '__main__':
     main()

@@ -42,39 +42,39 @@ options:
 
 EXAMPLES = '''
 # Create a Global external IP address
-gce_eip:
-  service_account_email: "{{ service_account_email }}"
-  credentials_file: "{{ credentials_file }}"
-  project_id: "{{ project_id }}"
-  name: my-global-ip
-  region: global
-  state: present
+- gce_eip:
+    service_account_email: "{{ service_account_email }}"
+    credentials_file: "{{ credentials_file }}"
+    project_id: "{{ project_id }}"
+    name: my-global-ip
+    region: global
+    state: present
 
 # Create a Regional external IP address
-gce_eip:
-  service_account_email: "{{ service_account_email }}"
-  credentials_file: "{{ credentials_file }}"
-  project_id: "{{ project_id }}"
-  name: my-global-ip
-  region: us-east1
-  state: present
+- gce_eip:
+    service_account_email: "{{ service_account_email }}"
+    credentials_file: "{{ credentials_file }}"
+    project_id: "{{ project_id }}"
+    name: my-global-ip
+    region: us-east1
+    state: present
 '''
 
 RETURN = '''
 address:
     description: IP address being operated on
     returned: always
-    type: string
+    type: str
     sample: "35.186.222.233"
 name:
     description: name of the address being operated on
     returned: always
-    type: string
+    type: str
     sample: "my-address"
 region:
     description: Which region an address belongs.
     returned: always
-    type: string
+    type: str
     sample: "global"
 '''
 

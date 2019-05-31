@@ -41,7 +41,6 @@ options:
   state:
     description:
       - absent - user should not exist, present - user should be.
-    required: False
     choices: ['absent', 'present']
     default: 'present'
   userid:
@@ -51,25 +50,16 @@ options:
   name:
     description:
       - The users' full name.
-    required: false
-    default: null
   password:
     description:
       - The users' password.
-    required: false
-    default: null
   group:
     description:
       - The name of the group to which the user belongs.
-    required: false
-    default: null
   email:
     description:
       - The users' E-mail address.
-    required: false
-    default: null
   update_password:
-    required: false
     default: always
     choices: ['always', 'on_create']
     description:
@@ -89,7 +79,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Create a new user in ManageIQ using a token
   manageiq_user:
@@ -101,7 +91,7 @@ EXAMPLES = '''
     manageiq_connection:
       url: 'http://127.0.0.1:3000'
       token: 'sometoken'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Delete a user in ManageIQ
   manageiq_user:
@@ -111,7 +101,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Delete a user in ManageIQ using a token
   manageiq_user:
@@ -120,7 +110,7 @@ EXAMPLES = '''
     manageiq_connection:
       url: 'http://127.0.0.1:3000'
       token: 'sometoken'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Update email of user in ManageIQ
   manageiq_user:
@@ -130,7 +120,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Update email of user in ManageIQ using a token
   manageiq_user:
@@ -139,7 +129,7 @@ EXAMPLES = '''
     manageiq_connection:
       url: 'http://127.0.0.1:3000'
       token: 'sometoken'
-      verify_ssl: False
+      validate_certs: False
 '''
 
 RETURN = '''

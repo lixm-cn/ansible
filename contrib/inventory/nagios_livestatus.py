@@ -36,11 +36,7 @@ import re
 import argparse
 import sys
 
-try:
-    import configparser
-except ImportError:
-    import ConfigParser
-    configparser = ConfigParser
+from ansible.module_utils.six.moves import configparser
 import json
 
 try:
@@ -172,5 +168,6 @@ class NagiosLivestatusInventory(object):
             print(json.dumps(self.result, indent=self.json_indent))
         else:
             sys.exit("usage: --list or --host HOSTNAME [--pretty]")
+
 
 NagiosLivestatusInventory()

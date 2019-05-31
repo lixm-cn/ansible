@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_gslbservice
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of GslbService Avi RESTful Object
 description:
@@ -54,6 +54,7 @@ options:
             - Note that the datapath status is determined by the association of health monitor profiles.
             - Only the controller provided status is determined through this configuration.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     created_by:
         description:
             - Creator name.
@@ -73,6 +74,7 @@ options:
             - If the gslb service is enabled, then the vips are sent in the dns responses based on reachability and configured algorithm.
             - If the gslb service is disabled, then the vips are no longer available in the dns response.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     groups:
         description:
             - Select list of pools belonging to this gslb service.
@@ -88,11 +90,18 @@ options:
             - In such a case, avi members can have controller derived status while non-avi members can be probed by via health monitor probes in dataplane.
             - Enum options - GSLB_SERVICE_HEALTH_MONITOR_ALL_MEMBERS, GSLB_SERVICE_HEALTH_MONITOR_ONLY_NON_AVI_MEMBERS.
             - Default value when not specified in API or module is interpreted by Avi Controller as GSLB_SERVICE_HEALTH_MONITOR_ALL_MEMBERS.
+    hm_off:
+        description:
+            - This field is an internal field and is used in se.
+            - Field introduced in 18.2.2.
+        version_added: "2.9"
+        type: bool
     is_federated:
         description:
             - This field indicates that this object is replicated across gslb federation.
             - Field introduced in 17.1.3.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     min_members:
         description:
             - The minimum number of members to distribute traffic to.
@@ -124,14 +133,14 @@ options:
             - Field introduced in 17.2.1.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
         version_added: "2.5"
+        type: bool
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
     ttl:
         description:
             - Ttl value (in seconds) for records served for this gslb service by the dns service.
-            - Allowed values are 1-86400.
-            - Units(SEC).
+            - Allowed values are 0-86400.
     url:
         description:
             - Avi controller URL of the object.
@@ -141,6 +150,7 @@ options:
             - Default is true.
             - Field introduced in 17.1.1.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     uuid:
         description:
             - Uuid of the gslb service.
@@ -151,6 +161,7 @@ options:
             - Default is false.
             - Field introduced in 17.1.1.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
 extends_documentation_fragment:
     - avi
 '''
@@ -175,7 +186,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -197,6 +208,7 @@ def main():
         groups=dict(type='list',),
         health_monitor_refs=dict(type='list',),
         health_monitor_scope=dict(type='str',),
+        hm_off=dict(type='bool',),
         is_federated=dict(type='bool',),
         min_members=dict(type='int',),
         name=dict(type='str', required=True),
@@ -215,10 +227,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'gslbservice',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

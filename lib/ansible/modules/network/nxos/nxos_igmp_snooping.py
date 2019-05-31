@@ -40,37 +40,27 @@ options:
     snooping:
         description:
             - Enables/disables IGMP snooping on the switch.
-        required: false
-        default: null
-        choices: ['true', 'false']
+        type: bool
     group_timeout:
         description:
             - Group membership timeout value for all VLANs on the device.
               Accepted values are integer in range 1-10080, I(never) and
               I(default).
-        required: false
-        default: null
     link_local_grp_supp:
         description:
             - Global link-local groups suppression.
-        required: false
-        default: null
-        choices: ['true', 'false']
+        type: bool
     report_supp:
         description:
             - Global IGMPv1/IGMPv2 Report Suppression.
-        required: false
-        default: null
+        type: bool
     v3_report_supp:
         description:
             - Global IGMPv3 Report Suppression and Proxy Reporting.
-        required: false
-        default: null
-        choices: ['true', 'false']
+        type: bool
     state:
         description:
             - Manage the state of the resource.
-        required: false
         default: present
         choices: ['present','default']
 '''
@@ -138,17 +128,6 @@ def get_group_timeout(config):
     return value
 
 
-def get_snooping(config):
-    REGEX = re.compile(r'{0}$'.format('no ip igmp snooping'), re.M)
-    value = False
-    try:
-        if REGEX.search(config):
-            value = False
-    except TypeError:
-        value = True
-    return value
-
-
 def get_igmp_snooping(module):
     command = 'show ip igmp snooping'
     existing = {}
@@ -202,9 +181,13 @@ def config_igmp_snooping(delta, existing, default=False):
 
     commands = []
     command = None
+    gt_command = None
     for key, value in delta.items():
         if value:
             if default and key == 'group_timeout':
+                if existing.get(key):
+                    gt_command = 'no ' + CMDS.get(key).format(existing.get(key))
+            elif value == 'default' and key == 'group_timeout':
                 if existing.get(key):
                     command = 'no ' + CMDS.get(key).format(existing.get(key))
             else:
@@ -216,6 +199,9 @@ def config_igmp_snooping(delta, existing, default=False):
             commands.append(command)
         command = None
 
+    if gt_command:
+        # ensure that group-timeout command is configured last
+        commands.append(gt_command)
     return commands
 
 
@@ -234,6 +220,19 @@ def get_igmp_snooping_defaults():
                    if value is not None)
 
     return default
+
+
+def igmp_snooping_gt_dependency(command, existing, module):
+    # group-timeout will fail if igmp snooping is disabled
+    gt = [i for i in command if i.startswith('ip igmp snooping group-timeout')]
+    if gt:
+        if 'no ip igmp snooping' in command or (existing['snooping'] is False and 'ip igmp snooping' not in command):
+            msg = "group-timeout cannot be enabled or changed when ip igmp snooping is disabled"
+            module.fail_json(msg=msg)
+        else:
+            # ensure that group-timeout command is configured last
+            command.remove(gt[0])
+            command.append(gt[0])
 
 
 def main():
@@ -278,6 +277,8 @@ def main():
         if delta:
             command = config_igmp_snooping(delta, existing)
             if command:
+                if group_timeout:
+                    igmp_snooping_gt_dependency(command, existing, module)
                 commands.append(command)
     elif state == 'default':
         proposed = get_igmp_snooping_defaults()
@@ -299,6 +300,7 @@ def main():
         results['commands'] = cmds
 
     module.exit_json(**results)
+
 
 if __name__ == '__main__':
     main()

@@ -49,9 +49,13 @@ options:
   tx_rate:
     description:
       - Transmit rate in bits per second (bps).
+      - This is state check parameter only.
+      - Supports conditionals, see L(Conditionals in Networking Modules,../network/user_guide/network_working_with_command_output.html)
   rx_rate:
     description:
       - Receiver rate in bits per second (bps).
+      - This is state check parameter only.
+      - Supports conditionals, see L(Conditionals in Networking Modules,../network/user_guide/network_working_with_command_output.html)
   delay:
     description:
       - Time in seconds to wait before checking for the operational state on
@@ -77,7 +81,7 @@ EXAMPLES = """
   onyx_interface:
       name: Eth1/2
       description: test-interface
-      speed: 100 GB
+      speed: 100G
       mtu: 512
 
 - name: make interface up
@@ -128,28 +132,33 @@ from ansible.module_utils.network.onyx.onyx import get_interfaces_config
 
 
 class OnyxInterfaceModule(BaseOnyxModule):
-    IF_ETH_REGEX = re.compile(r"^Eth(\d+\/\d+|Eth\d+\/\d+\d+)$")
+    IF_ETH_REGEX = re.compile(r"^Eth(\d+\/\d+|\d+\/\d+\/\d+)$")
     IF_VLAN_REGEX = re.compile(r"^Vlan (\d+)$")
     IF_LOOPBACK_REGEX = re.compile(r"^Loopback (\d+)$")
+    IF_PO_REGEX = re.compile(r"^Po(\d+)$")
 
     IF_TYPE_ETH = "ethernet"
     IF_TYPE_LOOPBACK = "loopback"
     IF_TYPE_VLAN = "vlan"
+    IF_TYPE_PO = "port-channel"
 
     IF_TYPE_MAP = {
         IF_TYPE_ETH: IF_ETH_REGEX,
         IF_TYPE_VLAN: IF_VLAN_REGEX,
         IF_TYPE_LOOPBACK: IF_LOOPBACK_REGEX,
+        IF_TYPE_PO: IF_PO_REGEX
     }
     UNSUPPORTED_ATTRS = {
         IF_TYPE_ETH: (),
         IF_TYPE_VLAN: ('speed', 'rx_rate', 'tx_rate'),
         IF_TYPE_LOOPBACK: ('speed', 'mtu', 'rx_rate', 'tx_rate'),
+        IF_TYPE_PO: ('speed', 'rx_rate', 'tx_rate'),
     }
     UNSUPPORTED_STATES = {
         IF_TYPE_ETH: ('absent',),
         IF_TYPE_VLAN: (),
         IF_TYPE_LOOPBACK: ('up', 'down'),
+        IF_TYPE_PO: ('absent'),
     }
 
     IF_MODIFIABLE_ATTRS = ('speed', 'description', 'mtu')
@@ -331,14 +340,25 @@ class OnyxInterfaceModule(BaseOnyxModule):
         return get_interfaces_config(self._module, self._interface_type)
 
     def load_current_config(self):
+        self._os_version = self._get_os_version()
         self._current_config = dict()
         config = self._get_interfaces_config()
         if not config:
             return
-
-        for item in config:
-            name = self.get_if_name(item)
-            self._current_config[name] = self._create_if_data(name, item)
+        if self._os_version < self.ONYX_API_VERSION:
+            for if_data in config:
+                if_name = self.get_if_name(if_data)
+                self._current_config[if_name] = self._create_if_data(
+                    if_name, if_data)
+        else:
+            if_data = dict()
+            for if_config in config:
+                for if_name, if_attr in iteritems(if_config):
+                    for config in if_attr:
+                        for key, value in iteritems(config):
+                            if_data[key] = value
+                    self._current_config[if_name] = self._create_if_data(
+                        if_name, if_data)
 
     def _generate_no_if_commands(self, req_if, curr_if):
         if self._interface_type == self.IF_TYPE_ETH:

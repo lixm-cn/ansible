@@ -8,7 +8,7 @@ __metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
-                    'supported_by': 'community'}
+                    'supported_by': 'certified'}
 
 DOCUMENTATION = r'''
 ---
@@ -38,7 +38,7 @@ options:
     - Optional if state is absent.
     choices: [node, port]
     required: yes
-  descrption:
+  description:
     description:
     - A description of the WWNN or WWPN pool.
     - Enter up to 256 characters.
@@ -86,7 +86,7 @@ EXAMPLES = r'''
     purpose: node
     first_addr: 20:00:00:25:B5:48:00:00
     last_addr: 20:00:00:25:B5:48:00:0F
-  ucs_wwn_pool:
+- ucs_wwn_pool:
     hostname: 172.16.143.150
     username: admin
     password: password
@@ -103,7 +103,7 @@ EXAMPLES = r'''
     password: password
     name: WWNN-Pool
     state: absent
-  ucs_wwn_pool:
+- ucs_wwn_pool:
     hostname: 172.16.143.150
     username: admin
     password: password

@@ -22,8 +22,8 @@ description:
     read from the device. This module includes an
     argument that will cause the module to wait for a specific condition
     before returning or timing out if the condition is not met.
-  - This module does not support running commands in configuration mode.
-    Please use M(aireos_config) to configure WLC devices.
+  - Commands run in configuration mode with this module are not
+    idempotent. Please use M(aireos_config) to configure WLC devices.
 extends_documentation_fragment: aireos
 options:
   commands:
@@ -41,8 +41,6 @@ options:
         before moving forward. If the conditional is not true
         within the configured number of retries, the task fails.
         See examples.
-    required: false
-    default: null
     aliases: ['waitfor']
   match:
     description:
@@ -52,7 +50,6 @@ options:
         then all conditionals in the wait_for must be satisfied.  If
         the value is set to C(any) then only one of the values must be
         satisfied.
-    required: false
     default: all
     choices: ['any', 'all']
   retries:
@@ -61,7 +58,6 @@ options:
         before it is considered failed. The command is run on the
         target device every retry and evaluated against the
         I(wait_for) conditions.
-    required: false
     default: 10
   interval:
     description:
@@ -69,7 +65,6 @@ options:
         of the command. If the command does not pass the specified
         conditions, the interval indicates how long to wait before
         trying the command again.
-    required: false
     default: 1
 """
 
@@ -148,9 +143,9 @@ def parse_commands(module, warnings):
                 'executing `%s`' % item['command']
             )
         elif item['command'].startswith('conf'):
-            module.fail_json(
-                msg='aireos_command does not support running config mode '
-                    'commands.  Please use aireos_config instead'
+            warnings.append(
+                'commands run in config mode with aireos_command are not '
+                'idempotent.  Please use aireos_config instead'
             )
     return commands
 
@@ -205,7 +200,7 @@ def main():
 
     if conditionals:
         failed_conditions = [item.raw for item in conditionals]
-        msg = 'One or more conditional statements have not be satisfied'
+        msg = 'One or more conditional statements have not been satisfied'
         module.fail_json(msg=msg, failed_conditions=failed_conditions)
 
     result.update({

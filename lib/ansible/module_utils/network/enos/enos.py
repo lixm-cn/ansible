@@ -4,7 +4,7 @@
 # Ansible still belong to the author of the module, and may assign their own
 # license to the complete work.
 #
-# Copyright (C) 2017 Lenovo, Inc.
+# Copyright (C) 2017 Lenovo.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,7 @@
 # Lenovo Networking
 
 from ansible.module_utils._text import to_text
-from ansible.module_utils.basic import env_fallback, return_values
+from ansible.module_utils.basic import env_fallback
 from ansible.module_utils.network.common.utils import to_list, EntityCollection
 from ansible.module_utils.connection import Connection, exec_command
 from ansible.module_utils.connection import ConnectionError

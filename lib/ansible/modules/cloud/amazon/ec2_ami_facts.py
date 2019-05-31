@@ -15,7 +15,7 @@ version_added: '2.5'
 short_description: Gather facts about ec2 AMIs
 description: Gather facts about ec2 AMIs
 author:
-  - Prasad Katti, @prasadkatti
+  - Prasad Katti (@prasadkatti)
 requirements: [ boto3 ]
 options:
   image_ids:
@@ -35,6 +35,11 @@ options:
     description:
       - Filter images by users with explicit launch permissions. Valid options are an AWS account ID, self, or all (public AMIs).
     aliases: [executable_user]
+  describe_image_attributes:
+    description:
+      - Describe attributes (like launchPermission) of the images found.
+    default: no
+    type: bool
 
 extends_documentation_fragment:
     - aws
@@ -74,7 +79,7 @@ images:
     architecture:
       description: The architecture of the image
       returned: always
-      type: string
+      type: str
       sample: x86_64
     block_device_mappings:
       description: Any block device mapping entries
@@ -84,7 +89,7 @@ images:
         device_name:
           description: The device name exposed to the instance
           returned: always
-          type: string
+          type: str
           sample: /dev/sda1
         ebs:
           description: EBS volumes
@@ -93,12 +98,12 @@ images:
     creation_date:
       description: The date and time the image was created
       returned: always
-      type: string
+      type: str
       sample: '2017-10-16T19:22:13.000Z'
     description:
       description: The description of the AMI
       returned: always
-      type: string
+      type: str
       sample: ''
     ena_support:
       description: whether enhanced networking with ENA is enabled
@@ -108,37 +113,37 @@ images:
     hypervisor:
       description: The hypervisor type of the image
       returned: always
-      type: string
+      type: str
       sample: xen
     image_id:
       description: The ID of the AMI
       returned: always
-      type: string
+      type: str
       sample: ami-5b466623
     image_location:
       description: The location of the AMI
       returned: always
-      type: string
+      type: str
       sample: 408466080000/Webapp
     image_type:
       description: The type of image
       returned: always
-      type: string
+      type: str
       sample: machine
     launch_permissions:
       description: launch permissions of the ami
-      returned: always
+      returned: when image is owned by calling account and describe_image_attributes is yes
       type: complex
       sample: [{"group": "all"}, {"user_id": "408466080000"}]
     name:
       description: The name of the AMI that was provided during image creation
       returned: always
-      type: string
+      type: str
       sample: Webapp
     owner_id:
       description: The AWS account ID of the image owner
       returned: always
-      type: string
+      type: str
       sample: '408466080000'
     public:
       description: whether the image has public launch permissions
@@ -148,22 +153,22 @@ images:
     root_device_name:
       description: The device name of the root device
       returned: always
-      type: string
+      type: str
       sample: /dev/sda1
     root_device_type:
       description: The type of root device used by the AMI
       returned: always
-      type: string
+      type: str
       sample: ebs
     sriov_net_support:
       description: whether enhanced networking is enabled
       returned: always
-      type: string
+      type: str
       sample: simple
     state:
       description: The current state of the AMI
       returned: always
-      type: string
+      type: str
       sample: available
     tags:
       description: Any tags assigned to the image
@@ -172,7 +177,7 @@ images:
     virtualization_type:
       description: The type of virtualization of the AMI
       returned: always
-      type: string
+      type: str
       sample: hvm
 '''
 
@@ -189,22 +194,47 @@ from ansible.module_utils.ec2 import (boto3_conn, ec2_argument_spec, get_aws_con
 def list_ec2_images(ec2_client, module):
 
     image_ids = module.params.get("image_ids")
-    filters = ansible_dict_to_boto3_filter_list(module.params.get("filters"))
     owners = module.params.get("owners")
     executable_users = module.params.get("executable_users")
+    filters = module.params.get("filters")
+    owner_param = []
+
+    # describe_images is *very* slow if you pass the `Owners`
+    # param (unless it's self), for some reason.
+    # Converting the owners to filters and removing from the
+    # owners param greatly speeds things up.
+    # Implementation based on aioue's suggestion in #24886
+    for owner in owners:
+        if owner.isdigit():
+            if 'owner-id' not in filters:
+                filters['owner-id'] = list()
+            filters['owner-id'].append(owner)
+        elif owner == 'self':
+            # self not a valid owner-alias filter (https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeImages.html)
+            owner_param.append(owner)
+        else:
+            if 'owner-alias' not in filters:
+                filters['owner-alias'] = list()
+            filters['owner-alias'].append(owner)
+
+    filters = ansible_dict_to_boto3_filter_list(filters)
 
     try:
-        images = ec2_client.describe_images(ImageIds=image_ids, Filters=filters, Owners=owners, ExecutableUsers=executable_users)
+        images = ec2_client.describe_images(ImageIds=image_ids, Filters=filters, Owners=owner_param, ExecutableUsers=executable_users)
         images = [camel_dict_to_snake_dict(image) for image in images["Images"]]
-        for image in images:
-            launch_permissions = ec2_client.describe_image_attribute(Attribute='launchPermission', ImageId=image['image_id'])['LaunchPermissions']
-            image['launch_permissions'] = [camel_dict_to_snake_dict(perm) for perm in launch_permissions]
     except (ClientError, BotoCoreError) as err:
         module.fail_json_aws(err, msg="error describing images")
-
     for image in images:
-        image['tags'] = boto3_tag_list_to_ansible_dict(image.get('tags', []), 'key', 'value')
+        try:
+            image['tags'] = boto3_tag_list_to_ansible_dict(image.get('tags', []))
+            if module.params.get("describe_image_attributes"):
+                launch_permissions = ec2_client.describe_image_attribute(Attribute='launchPermission', ImageId=image['image_id'])['LaunchPermissions']
+                image['launch_permissions'] = [camel_dict_to_snake_dict(perm) for perm in launch_permissions]
+        except (ClientError, BotoCoreError) as err:
+            # describing launch permissions of images owned by others is not permitted, but shouldn't cause failures
+            pass
 
+    images.sort(key=lambda e: e.get('creation_date', ''))  # it may be possible that creation_date does not always exist
     module.exit_json(images=images)
 
 
@@ -216,7 +246,8 @@ def main():
             image_ids=dict(default=[], type='list', aliases=['image_id']),
             filters=dict(default={}, type='dict'),
             owners=dict(default=[], type='list', aliases=['owner']),
-            executable_users=dict(default=[], type='list', aliases=['executable_user'])
+            executable_users=dict(default=[], type='list', aliases=['executable_user']),
+            describe_image_attributes=dict(default=False, type='bool')
         )
     )
 

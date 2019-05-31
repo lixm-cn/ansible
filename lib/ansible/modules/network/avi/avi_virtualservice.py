@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_virtualservice
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of VirtualService Avi RESTful Object
 description:
@@ -52,6 +52,14 @@ options:
             - Redistribution is based on the auto redistribute property of the serviceenginegroup.
             - Enum options - ACTIVE_STANDBY_SE_1, ACTIVE_STANDBY_SE_2.
             - Default value when not specified in API or module is interpreted by Avi Controller as ACTIVE_STANDBY_SE_1.
+    allow_invalid_client_cert:
+        description:
+            - Process request even if invalid client certificate is presented.
+            - Datascript apis need to be used for processing of such requests.
+            - Field introduced in 18.2.3.
+            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        version_added: "2.9"
+        type: bool
     analytics_policy:
         description:
             - Determines analytics settings for the application.
@@ -59,6 +67,13 @@ options:
         description:
             - Specifies settings related to analytics.
             - It is a reference to an object of type analyticsprofile.
+    apic_contract_graph:
+        description:
+            - The name of the contract/graph associated with the virtual service.
+            - Should be in the <contract name> <graph name> format.
+            - This is applicable only for service integration mode with cisco apic controller.
+            - Field introduced in 17.2.12,18.1.2.
+        version_added: "2.9"
     application_profile_ref:
         description:
             - Enable application layer specific features for the virtual service.
@@ -67,12 +82,12 @@ options:
         description:
             - Auto-allocate floating/elastic ip from the cloud infrastructure.
             - Field deprecated in 17.1.1.
-            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     auto_allocate_ip:
         description:
             - Auto-allocate vip from the provided subnet.
             - Field deprecated in 17.1.1.
-            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     availability_zone:
         description:
             - Availability-zone to place the virtual service.
@@ -81,12 +96,29 @@ options:
         description:
             - (internal-use) fip allocated by avi in the cloud infrastructure.
             - Field deprecated in 17.1.1.
-            - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     avi_allocated_vip:
         description:
             - (internal-use) vip allocated by avi in the cloud infrastructure.
             - Field deprecated in 17.1.1.
+        type: bool
+    azure_availability_set:
+        description:
+            - (internal-use)applicable for azure only.
+            - Azure availability set to which this vs is associated.
+            - Internally set by the cloud connector.
+            - Field introduced in 17.2.12, 18.1.2.
+        version_added: "2.9"
+    bulk_sync_kvcache:
+        description:
+            - (this is a beta feature).
+            - Sync key-value cache to the new ses when vs is scaled out.
+            - For ex  ssl sessions are stored using vs's key-value cache.
+            - When the vs is scaled out, the ssl session information is synced to the new se, allowing existing ssl sessions to be reused on the new se.
+            - Field introduced in 17.2.7, 18.1.1.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        version_added: "2.6"
+        type: bool
     client_auth:
         description:
             - Http authentication configuration for protected resources.
@@ -96,6 +128,7 @@ options:
             - Field introduced in 17.2.4.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
         version_added: "2.5"
+        type: bool
     cloud_config_cksum:
         description:
             - Checksum of cloud configuration for vs.
@@ -106,7 +139,7 @@ options:
     cloud_type:
         description:
             - Enum options - cloud_none, cloud_vcenter, cloud_openstack, cloud_aws, cloud_vca, cloud_apic, cloud_mesos, cloud_linuxserver, cloud_docker_ucp,
-            - cloud_rancher, cloud_oshift_k8s, cloud_azure.
+            - cloud_rancher, cloud_oshift_k8s, cloud_azure, cloud_gcp.
             - Default value when not specified in API or module is interpreted by Avi Controller as CLOUD_NONE.
     connections_rate_limit:
         description:
@@ -122,6 +155,7 @@ options:
             - Select the algorithm for qos fairness.
             - This determines how multiple virtual services sharing the same service engines will prioritize traffic over a congested network.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     description:
         description:
             - User defined description for the object.
@@ -154,20 +188,25 @@ options:
         description:
             - Force placement on all se's in service group (mesos mode only).
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     enable_autogw:
         description:
             - Response traffic to clients will be sent back to the source mac address of the connection, rather than statically sent to a default gateway.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     enable_rhi:
         description:
             - Enable route health injection using the bgp config in the vrf context.
+        type: bool
     enable_rhi_snat:
         description:
             - Enable route health injection for source nat'ted floating ip address using the bgp config in the vrf context.
+        type: bool
     enabled:
         description:
             - Enable or disable the virtual service.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     error_page_profile_ref:
         description:
             - Error page profile to be used for this virtualservice.this profile is used to send the custom error page to the client generated by the proxy.
@@ -209,6 +248,7 @@ options:
         description:
             - Ignore pool servers network reachability constraints for virtual service placement.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     ip_address:
         description:
             - Ip address of the virtual service.
@@ -217,10 +257,16 @@ options:
         description:
             - Subnet and/or network for allocating virtualservice ip by ipam provider module.
             - Field deprecated in 17.1.1.
+    l4_policies:
+        description:
+            - L4 policies applied to the data traffic of the virtual service.
+            - Field introduced in 17.2.7.
+        version_added: "2.6"
     limit_doser:
         description:
             - Limit potential dos attackers who exceed max_cps_per_client significantly to a fraction of max_cps_per_client for a while.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     max_cps_per_client:
         description:
             - Maximum connections per second per client ip.
@@ -231,6 +277,11 @@ options:
         description:
             - Microservice representing the virtual service.
             - It is a reference to an object of type microservice.
+    min_pools_up:
+        description:
+            - Minimum number of up pools to mark vs up.
+            - Field introduced in 18.2.1, 17.2.12.
+        version_added: "2.9"
     name:
         description:
             - Name for the virtual service.
@@ -272,19 +323,33 @@ options:
         description:
             - Remove listening port if virtualservice is down.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     requests_rate_limit:
         description:
             - Rate limit the incoming requests to this virtual service.
+    saml_sp_config:
+        description:
+            - Application-specific saml config.
+            - Field introduced in 18.2.3.
+        version_added: "2.9"
     scaleout_ecmp:
         description:
             - Disable re-distribution of flows across service engines for a virtual service.
             - Enable if the network itself performs flow hashing with ecmp in environments such as gcp.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     se_group_ref:
         description:
             - The service engine group to use for this virtual service.
             - Moving to a new se group is disruptive to existing connections for this vs.
             - It is a reference to an object of type serviceenginegroup.
+    security_policy_ref:
+        description:
+            - Security policy applied on the traffic of the virtual service.
+            - This policy is used to perform security actions such as distributed denial of service (ddos) attack mitigation, etc.
+            - It is a reference to an object of type securitypolicy.
+            - Field introduced in 18.2.1.
+        version_added: "2.9"
     server_network_profile_ref:
         description:
             - Determines the network settings profile for the server side of tcp proxied connections.
@@ -325,11 +390,28 @@ options:
         description:
             - Determines the set of ssl versions and ciphers to accept for ssl/tls terminated connections.
             - It is a reference to an object of type sslprofile.
+    ssl_profile_selectors:
+        description:
+            - Select ssl profile based on client ip address match.
+            - Field introduced in 18.2.3.
+        version_added: "2.9"
     ssl_sess_cache_avg_size:
         description:
             - Expected number of ssl session cache entries (may be exceeded).
             - Allowed values are 1024-16383.
             - Default value when not specified in API or module is interpreted by Avi Controller as 1024.
+    sso_policy:
+        description:
+            - Client authentication and authorization policy for the virtualservice.
+            - Field deprecated in 18.2.3.
+            - Field introduced in 18.2.1.
+        version_added: "2.9"
+    sso_policy_ref:
+        description:
+            - The sso policy attached to the virtualservice.
+            - It is a reference to an object of type ssopolicy.
+            - Field introduced in 18.2.3.
+        version_added: "2.9"
     static_dns_records:
         description:
             - List of static dns records applied to this virtual service.
@@ -346,12 +428,25 @@ options:
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
+    topology_policies:
+        description:
+            - Topology policies applied on the dns traffic of the virtual service based ongslb topology algorithm.
+            - Field introduced in 18.2.3.
+        version_added: "2.9"
     traffic_clone_profile_ref:
         description:
             - Server network or list of servers for cloning traffic.
             - It is a reference to an object of type trafficcloneprofile.
             - Field introduced in 17.1.1.
         version_added: "2.4"
+    traffic_enabled:
+        description:
+            - Knob to enable the virtual service traffic on its assigned service engines.
+            - This setting is effective only when the enabled flag is set to true.
+            - Field introduced in 17.2.8.
+            - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        version_added: "2.6"
+        type: bool
     type:
         description:
             - Specify if this is a normal virtual service, or if it is the parent or child of an sni-enabled virtual hosted virtual service.
@@ -364,6 +459,7 @@ options:
         description:
             - Use bridge ip as vip on each host in mesos deployments.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     use_vip_as_snat:
         description:
             - Use the virtual ip as the snat ip for health monitoring and sending traffic to the backend servers instead of the service engine interface ip.
@@ -372,6 +468,7 @@ options:
             - Field introduced in 17.1.9,17.2.3.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
         version_added: "2.5"
+        type: bool
     uuid:
         description:
             - Uuid of the virtualservice.
@@ -396,9 +493,15 @@ options:
     vs_datascripts:
         description:
             - Datascripts applied on the data traffic of the virtual service.
+    vsvip_cloud_config_cksum:
+        description:
+            - Checksum of cloud configuration for vsvip.
+            - Internally set by cloud connector.
+            - Field introduced in 17.2.9, 18.1.2.
+        version_added: "2.9"
     vsvip_ref:
         description:
-            - Mostly used during the creation of shared vs, this fieldrefers to entities that can be shared across virtual services.
+            - Mostly used during the creation of shared vs, this field refers to entities that can be shared across virtual services.
             - It is a reference to an object of type vsvip.
             - Field introduced in 17.1.1.
         version_added: "2.4"
@@ -452,7 +555,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -465,14 +568,18 @@ def main():
                                    choices=['put', 'patch']),
         avi_api_patch_op=dict(choices=['add', 'replace', 'delete']),
         active_standby_se_tag=dict(type='str',),
+        allow_invalid_client_cert=dict(type='bool',),
         analytics_policy=dict(type='dict',),
         analytics_profile_ref=dict(type='str',),
+        apic_contract_graph=dict(type='str',),
         application_profile_ref=dict(type='str',),
         auto_allocate_floating_ip=dict(type='bool',),
         auto_allocate_ip=dict(type='bool',),
         availability_zone=dict(type='str',),
         avi_allocated_fip=dict(type='bool',),
         avi_allocated_vip=dict(type='bool',),
+        azure_availability_set=dict(type='str',),
+        bulk_sync_kvcache=dict(type='bool',),
         client_auth=dict(type='dict',),
         close_client_conn_on_config_update=dict(type='bool',),
         cloud_config_cksum=dict(type='str',),
@@ -504,9 +611,11 @@ def main():
         ign_pool_net_reach=dict(type='bool',),
         ip_address=dict(type='dict',),
         ipam_network_subnet=dict(type='dict',),
+        l4_policies=dict(type='list',),
         limit_doser=dict(type='bool',),
         max_cps_per_client=dict(type='int',),
         microservice_ref=dict(type='str',),
+        min_pools_up=dict(type='int',),
         name=dict(type='str', required=True),
         network_profile_ref=dict(type='str',),
         network_ref=dict(type='str',),
@@ -518,8 +627,10 @@ def main():
         port_uuid=dict(type='str',),
         remove_listening_port_on_vs_down=dict(type='bool',),
         requests_rate_limit=dict(type='dict',),
+        saml_sp_config=dict(type='dict',),
         scaleout_ecmp=dict(type='bool',),
         se_group_ref=dict(type='str',),
+        security_policy_ref=dict(type='str',),
         server_network_profile_ref=dict(type='str',),
         service_metadata=dict(type='str',),
         service_pool_select=dict(type='list',),
@@ -529,12 +640,17 @@ def main():
         sp_pool_refs=dict(type='list',),
         ssl_key_and_certificate_refs=dict(type='list',),
         ssl_profile_ref=dict(type='str',),
+        ssl_profile_selectors=dict(type='list',),
         ssl_sess_cache_avg_size=dict(type='int',),
+        sso_policy=dict(type='dict',),
+        sso_policy_ref=dict(type='str',),
         static_dns_records=dict(type='list',),
         subnet=dict(type='dict',),
         subnet_uuid=dict(type='str',),
         tenant_ref=dict(type='str',),
+        topology_policies=dict(type='list',),
         traffic_clone_profile_ref=dict(type='str',),
+        traffic_enabled=dict(type='bool',),
         type=dict(type='str',),
         url=dict(type='str',),
         use_bridge_ip_as_vip=dict(type='bool',),
@@ -545,6 +661,7 @@ def main():
         vip=dict(type='list',),
         vrf_context_ref=dict(type='str',),
         vs_datascripts=dict(type='list',),
+        vsvip_cloud_config_cksum=dict(type='str',),
         vsvip_ref=dict(type='str',),
         waf_policy_ref=dict(type='str',),
         weight=dict(type='int',),
@@ -554,10 +671,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'virtualservice',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

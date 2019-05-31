@@ -19,8 +19,8 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
-from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import patch
+from units.compat import unittest
+from units.compat.mock import patch
 from units.mock.vault_helper import TextVaultSecret
 
 from ansible import errors
@@ -40,10 +40,9 @@ class TestVaultCli(unittest.TestCase):
         self.tty_patcher.stop()
 
     def test_parse_empty(self):
-        cli = VaultCLI([])
-        self.assertRaisesRegexp(errors.AnsibleOptionsError,
-                                '.*Missing required action.*',
-                                cli.parse)
+        cli = VaultCLI(['vaultcli'])
+        self.assertRaises(SystemExit,
+                          cli.parse)
 
     # FIXME: something weird seems to be afoot when parsing actions
     # cli = VaultCLI(args=['view', '/dev/null/foo', 'mysecret3'])

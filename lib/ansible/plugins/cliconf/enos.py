@@ -1,38 +1,30 @@
-# This code is part of Ansible, but is an independent component.
-# This particular file snippet, and this file snippet only, is BSD licensed.
-# Modules you write using this snippet, which is embedded dynamically by
-# Ansible still belong to the author of the module, and may assign their own
-# license to the complete work.
+# (C) 2017 Red Hat Inc.
+# Copyright (C) 2017 Lenovo.
 #
-# Copyright (C) 2017 Lenovo, Inc.
-# All rights reserved.
+# GNU General Public License v3.0+
 #
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 #
-#  * Redistributions of source code must retain the above copyright
-#    notice, this list of conditions and the following disclaimer.
-#  * Redistributions in binary form must reproduce the above copyright notice,
-#    this list of conditions and the following disclaimer in the documentation
-#    and/or other materials provided with the distribution.
+# (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 #
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-#
-# Contains CLI Configuration Plugin methods for ENOS Modules
+# Contains CLIConf Plugin methods for ENOS Modules
 # Lenovo Networking
 #
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
+
+DOCUMENTATION = """
+---
+cliconf: enos
+short_description: Use enos cliconf to run command on Lenovo ENOS platform
+description:
+  - This enos plugin provides low level abstraction apis for
+    sending and receiving CLI commands from Lenovo ENOS network devices.
+version_added: "2.5"
+"""
 
 import re
 import json
@@ -50,7 +42,7 @@ class Cliconf(CliconfBase):
         device_info = {}
 
         device_info['network_os'] = 'enos'
-        reply = self.get(b'show version')
+        reply = self.get('show version')
         data = to_text(reply, errors='surrogate_or_strict').strip()
 
         match = re.search(r'^Software Version (.*?) ', data, re.M | re.I)
@@ -70,27 +62,24 @@ class Cliconf(CliconfBase):
         return device_info
 
     @enable_mode
-    def get_config(self, source='running'):
+    def get_config(self, source='running', format='text', flags=None):
         if source not in ('running', 'startup'):
             msg = "fetching configuration from %s is not supported"
             return self.invalid_params(msg % source)
         if source == 'running':
-            cmd = b'show running-config'
+            cmd = 'show running-config'
         else:
-            cmd = b'show startup-config'
+            cmd = 'show startup-config'
         return self.send_command(cmd)
 
     @enable_mode
     def edit_config(self, command):
-        for cmd in chain([b'configure terminal'], to_list(command), [b'end']):
+        for cmd in chain(['configure terminal'], to_list(command), ['end']):
             self.send_command(cmd)
 
-    def get(self, command, prompt=None, answer=None, sendonly=False):
-        return self.send_command(command, prompt=prompt, answer=answer, sendonly=sendonly)
+    def get(self, command, prompt=None, answer=None, sendonly=False, newline=True, check_all=False):
+        return self.send_command(command=command, prompt=prompt, answer=answer, sendonly=sendonly, newline=newline, check_all=check_all)
 
     def get_capabilities(self):
-        result = {}
-        result['rpc'] = self.get_base_rpc()
-        result['network_api'] = 'cliconf'
-        result['device_info'] = self.get_device_info()
+        result = super(Cliconf, self).get_capabilities()
         return json.dumps(result)

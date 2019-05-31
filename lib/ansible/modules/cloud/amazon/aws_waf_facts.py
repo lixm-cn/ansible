@@ -17,11 +17,19 @@ options:
   name:
     description:
       - The name of a Web Application Firewall
+  waf_regional:
+      description: Wether to use waf_regional module. Defaults to true
+      default: false
+      required: no
+      type: bool
+      version_added: "2.9"
 
 author:
   - Mike Mochan (@mmochan)
   - Will Thames (@willthames)
-extends_documentation_fragment: aws
+extends_documentation_fragment:
+    - aws
+    - ec2
 '''
 
 EXAMPLES = '''
@@ -31,6 +39,11 @@ EXAMPLES = '''
 - name: obtain all facts for a single WAF
   aws_waf_facts:
     name: test_waf
+
+- name: obtain all facts for a single WAF Regional
+  aws_waf_facts:
+    name: test_waf
+    waf_regional: true
 '''
 
 RETURN = '''
@@ -42,7 +55,7 @@ wafs:
     name:
       description: A friendly name or description of the WebACL
       returned: always
-      type: string
+      type: str
       sample: test_waf
     default_action:
       description: The action to perform if none of the Rules contained in the WebACL match.
@@ -52,7 +65,7 @@ wafs:
     metric_name:
       description: A friendly name or description for the metrics for this WebACL
       returned: always
-      type: string
+      type: str
       sample: test_waf_metric
     rules:
       description: An array that contains the action for each Rule in a WebACL , the priority of the Rule
@@ -62,17 +75,17 @@ wafs:
         action:
           description: The action to perform if the Rule matches
           returned: always
-          type: string
+          type: str
           sample: BLOCK
         metric_name:
           description: A friendly name or description for the metrics for this Rule
           returned: always
-          type: string
+          type: str
           sample: ipblockrule
         name:
           description: A friendly name or description of the Rule
           returned: always
-          type: string
+          type: str
           sample: ip_block_rule
         predicates:
           description: The Predicates list contains a Predicate for each
@@ -111,13 +124,14 @@ def main():
     argument_spec.update(
         dict(
             name=dict(required=False),
+            waf_regional=dict(type='bool', default=False),
         )
     )
     module = AnsibleAWSModule(argument_spec=argument_spec, supports_check_mode=True)
 
     region, ec2_url, aws_connect_kwargs = get_aws_connection_info(module, boto3=True)
-    client = boto3_conn(module, conn_type='client', resource='waf', region=region, endpoint=ec2_url, **aws_connect_kwargs)
-
+    resource = 'waf' if not module.params['waf_regional'] else 'waf-regional'
+    client = boto3_conn(module, conn_type='client', resource=resource, region=region, endpoint=ec2_url, **aws_connect_kwargs)
     web_acls = list_web_acls(client, module)
     name = module.params['name']
     if name:

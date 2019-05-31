@@ -2,17 +2,26 @@
 # Copyright: (c) 2017, Abhijeet Kasurde <akasurde@redhat.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-- name: make sure pyvmomi is installed
-  pip:
-    name: pyvmomi
-    state: latest
-  when: "{{ ansible_user_id == 'root' }}"
+- import_role:
+    name: prepare_vmware_tests
+  vars:
+    setup_attach_host: true
+    setup_datastore: true
+    setup_virtualmachines: true
+- name: set state to poweroff the first VM
+  vmware_guest_powerstate:
+    validate_certs: False
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_username }}"
+    password: "{{ vcenter_password }}"
+    name: "{{ virtual_machines[0].name }}"
+    folder: "{{ virtual_machines[0].folder }}"
+    state: powered-off
+  register: poweroff_d1_c1_f0
 
-- name: store the vcenter container ip
-  set_fact:
-    vcsim: "{{ lookup('env', 'vcenter_host') }}"
-- debug: var=vcsim
+- debug: var=poweroff_d1_c1_f0
 
-# Commenting following two is failing right now - 15 Dec 2017
-#- include: poweroff_d1_c1_f0.yml
-#- include: poweroff_d1_c1_f1.yml
+- name: make sure change was made
+  assert:
+    that:
+        - poweroff_d1_c1_f0.changed

@@ -34,12 +34,6 @@ options:
   origin:
     description:
       - Snapshot from which to create a clone.
-  key_value:
-    description:
-      - (**DEPRECATED**) This will be removed in Ansible-2.9.  Set these values in the
-      - C(extra_zfs_properties) option instead.
-      - The C(zfs) module takes key=value pairs for zfs properties to be set.
-      - See the zfs(8) man page for more information.
   extra_zfs_properties:
     description:
       - A dictionary of zfs properties to be set.
@@ -80,8 +74,7 @@ EXAMPLES = '''
   zfs:
     name: rpool/cloned_fs
     state: present
-    extra_zfs_properties:
-      origin: rpool/myfs@mysnapshot
+    origin: rpool/myfs@mysnapshot
 
 - name: Destroy a filesystem
   zfs:
@@ -144,9 +137,7 @@ class Zfs(object):
             self.changed = True
             return
         properties = self.properties
-        volsize = properties.pop('volsize', None)
-        volblocksize = properties.pop('volblocksize', None)
-        origin = properties.pop('origin', None)
+        origin = self.module.params.get('origin', None)
         cmd = [self.zfs_cmd]
 
         if "@" in self.name:
@@ -161,14 +152,15 @@ class Zfs(object):
         if action in ['create', 'clone']:
             cmd += ['-p']
 
-        if volsize:
-            cmd += ['-V', volsize]
-        if volblocksize:
-            cmd += ['-b', volblocksize]
         if properties:
             for prop, value in properties.items():
-                cmd += ['-o', '%s="%s"' % (prop, value)]
-        if origin:
+                if prop == 'volsize':
+                    cmd += ['-V', value]
+                elif prop == 'volblocksize':
+                    cmd += ['-b', value]
+                else:
+                    cmd += ['-o', '%s="%s"' % (prop, value)]
+        if origin and action == 'clone':
             cmd.append(origin)
         cmd.append(self.name)
         (rc, out, err) = self.module.run_command(' '.join(cmd))
@@ -228,42 +220,17 @@ def main():
         argument_spec=dict(
             name=dict(type='str', required=True),
             state=dict(type='str', required=True, choices=['absent', 'present']),
-            # No longer used. Deprecated and due for removal
-            createparent=dict(type='bool', default=None),
+            origin=dict(type='str', default=None),
             extra_zfs_properties=dict(type='dict', default={}),
         ),
         supports_check_mode=True,
-        # Remove this in Ansible 2.9
-        check_invalid_arguments=False,
     )
 
-    state = module.params.pop('state')
-    name = module.params.pop('name')
+    state = module.params.get('state')
+    name = module.params.get('name')
 
-    # The following is deprecated.  Remove in Ansible 2.9
-    # Get all valid zfs-properties
-    properties = dict()
-    for prop, value in module.params.items():
-        # All freestyle params are zfs properties
-        if prop not in module.argument_spec:
-            if isinstance(value, bool):
-                if value is True:
-                    properties[prop] = 'on'
-                else:
-                    properties[prop] = 'off'
-            else:
-                properties[prop] = value
-
-    if properties:
-        module.deprecate('Passing zfs properties as arbitrary parameters to the zfs module is'
-                         ' deprecated.  Send them as a dictionary in the extra_zfs_properties'
-                         ' parameter instead.', version='2.9')
-        # Merge, giving the module_params precedence
-        for prop, value in module.params['extra_zfs_properties'].items():
-            properties[prop] = value
-
-        module.params['extras_zfs_properties'] = properties
-    # End deprecated section
+    if module.params.get('origin') and '@' in name:
+        module.fail_json(msg='cannot specify origin when operating on a snapshot')
 
     # Reverse the boolification of zfs properties
     for prop, value in module.params['extra_zfs_properties'].items():

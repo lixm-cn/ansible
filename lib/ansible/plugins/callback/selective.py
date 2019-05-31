@@ -26,7 +26,7 @@ DOCUMENTATION = """
           - name: ANSIBLE_SELECTIVE_DONT_COLORIZE
         ini:
           - section: defaults
-          - key: nocolor
+            key: nocolor
         type: boolean
 """
 
@@ -178,13 +178,10 @@ class CallbackModule(CallbackBase):
         self.last_task_name = task.get_name()
         self.printed_last_task = False
 
-    def v2_runner_on_ok(self, result, **kwargs):
+    def _print_task_result(self, result, error=False, **kwargs):
         """Run when a task finishes correctly."""
-        failed = result._result.get("failed")
-        unreachable = result._result.get("unreachable")
 
-        if 'print_action' in result._task.tags or failed or unreachable or \
-                self._display.verbosity > 1:
+        if 'print_action' in result._task.tags or error or self._display.verbosity > 1:
             self._print_task()
             self.last_skipped = False
             msg = to_text(result._result.get('msg', '')) or\
@@ -199,7 +196,7 @@ class CallbackModule(CallbackBase):
                                      msg,
                                      result._result.get('diff', None),
                                      is_host=True,
-                                     error=failed or unreachable,
+                                     error=error,
                                      stdout=result._result.get('module_stdout', None),
                                      stderr=stderr.strip(),
                                      )
@@ -240,8 +237,8 @@ class CallbackModule(CallbackBase):
             else:
                 color = 'ok'
 
-            msg = '{0}    : ok={1}\tchanged={2}\tfailed={3}\tunreachable={4}'.format(
-                host, s['ok'], s['changed'], s['failures'], s['unreachable'])
+            msg = '{0}    : ok={1}\tchanged={2}\tfailed={3}\tunreachable={4}\trescued={5}\tignored={6}'.format(
+                host, s['ok'], s['changed'], s['failures'], s['unreachable'], s['rescued'], s['ignored'])
             print(colorize(msg, color))
 
     def v2_runner_on_skipped(self, result, **kwargs):
@@ -267,6 +264,13 @@ class CallbackModule(CallbackBase):
                 print(self._indent_text(reason, 8))
                 print(reason)
 
+    def v2_runner_on_ok(self, result, **kwargs):
+        self._print_task_result(result, error=False, **kwargs)
+
+    def v2_runner_on_failed(self, result, **kwargs):
+        self._print_task_result(result, error=True, **kwargs)
+
+    def v2_runner_on_unreachable(self, result, **kwargs):
+        self._print_task_result(result, error=True, **kwargs)
+
     v2_playbook_on_handler_task_start = v2_playbook_on_task_start
-    v2_runner_on_failed = v2_runner_on_ok
-    v2_runner_on_unreachable = v2_runner_on_ok

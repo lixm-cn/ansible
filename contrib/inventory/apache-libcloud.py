@@ -35,17 +35,14 @@ import os
 import argparse
 import re
 from time import time
-import ConfigParser
 
-from six import iteritems, string_types
+from ansible.module_utils.six import iteritems, string_types
+from ansible.module_utils.six.moves import configparser as ConfigParser
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
 import libcloud.security as sec
 
-try:
-    import json
-except ImportError:
-    import simplejson as json
+import json
 
 
 class LibcloudInventory(object):
@@ -343,6 +340,7 @@ class LibcloudInventory(object):
 
 def main():
     LibcloudInventory()
+
 
 if __name__ == '__main__':
     main()

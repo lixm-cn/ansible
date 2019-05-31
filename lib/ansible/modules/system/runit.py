@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-#
+
 # Copyright: (c) 2015, Brian Coca <bcoca@ansible.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
@@ -13,19 +13,20 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 
 # This is a modification of @bcoca's `svc` module
 
-DOCUMENTATION = '''
+DOCUMENTATION = r'''
 ---
 module: runit
 author:
 - James Sumners (@jsumners)
 version_added: "2.3"
-short_description:  Manage runit services
+short_description: Manage runit services
 description:
     - Controls runit services on remote hosts using the sv utility.
 options:
     name:
         description:
             - Name of the service to manage.
+        type: str
         required: yes
     state:
         description:
@@ -35,22 +36,25 @@ options:
               C(reloaded) will send a HUP (sv reload).
               C(once) will run a normally downed sv once (sv once), not really
               an idempotent operation.
+        type: str
         choices: [ killed, once, reloaded, restarted, started, stopped ]
     enabled:
         description:
-            - Wheater the service is enabled or not, if disabled it also implies stopped.
+            - Whether the service is enabled or not, if disabled it also implies stopped.
         type: bool
     service_dir:
         description:
             - directory runsv watches for services
+        type: str
         default: /var/service
     service_src:
         description:
             - directory where services are defined, the source of symlinks to service_dir.
+        type: str
         default: /etc/sv
 '''
 
-EXAMPLES = '''
+EXAMPLES = r'''
 - name: Start sv dnscache, if not running
   runit:
     name: dnscache
@@ -85,7 +89,6 @@ EXAMPLES = '''
 
 import os
 import re
-import traceback
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils._text import to_native
@@ -168,18 +171,22 @@ class Sv(object):
             self.full_state = self.state = err
         else:
             self.full_state = out
+            # full_state *may* contain information about the logger:
+            # "down: /etc/service/service-without-logger: 1s, normally up\n"
+            # "down: /etc/service/updater: 127s, normally up; run: log: (pid 364) 263439s\n"
+            full_state_no_logger = self.full_state.split("; ")[0]
 
-            m = re.search(r'\(pid (\d+)\)', out)
+            m = re.search(r'\(pid (\d+)\)', full_state_no_logger)
             if m:
                 self.pid = m.group(1)
 
-            m = re.search(r' (\d+)s', out)
+            m = re.search(r' (\d+)s', full_state_no_logger)
             if m:
                 self.duration = m.group(1)
 
-            if re.search('run:', out):
+            if re.search(r'^run:', full_state_no_logger):
                 self.state = 'started'
-            elif re.search('down:', out):
+            elif re.search(r'^down:', full_state_no_logger):
                 self.state = 'stopped'
             else:
                 self.state = 'unknown'
@@ -222,7 +229,7 @@ class Sv(object):
         try:
             (rc, out, err) = self.module.run_command(' '.join(cmd))
         except Exception as e:
-            self.module.fail_json(msg="failed to execute: %s" % to_native(e), exception=traceback.format_exc())
+            self.module.fail_json(msg="failed to execute: %s" % to_native(e))
         return (rc, out, err)
 
     def report(self):
@@ -264,7 +271,7 @@ def main():
                 else:
                     sv.disable()
             except (OSError, IOError) as e:
-                module.fail_json(msg="Could not change service link: %s" % to_native(e), exception=traceback.format_exc())
+                module.fail_json(msg="Could not change service link: %s" % to_native(e))
 
     if state is not None and state != sv.state:
         changed = True

@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2017, Ansible by Red Hat, inc
+# Copyright: (c) 2017, Ansible by Red Hat, inc
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 from __future__ import absolute_import, division, print_function
@@ -27,7 +27,8 @@ notes:
 options:
   name:
     description:
-      - Name of the Interface to be configured on remote device.
+      - Name of the Interface to be configured on remote device. The name of interface
+        should be in expanded format and not abbreviated.
     required: true
   description:
     description:
@@ -37,6 +38,7 @@ options:
       - Interface link status. If the value is I(True) the interface state will be
         enabled, else if value is I(False) interface will be in disable (shutdown) state.
     default: True
+    type: bool
   speed:
     description:
       - This option configures autoneg and speed/duplex/flowcontrol for the interface
@@ -48,9 +50,13 @@ options:
   tx_rate:
     description:
       - Transmit rate in bits per second (bps) for the interface given in C(name) option.
+      - This is state check parameter only.
+      - Supports conditionals, see L(Conditionals in Networking Modules,../network/user_guide/network_working_with_command_output.html)
   rx_rate:
     description:
       - Receiver rate in bits per second (bps) for the interface given in C(name) option.
+      - This is state check parameter only.
+      - Supports conditionals, see L(Conditionals in Networking Modules,../network/user_guide/network_working_with_command_output.html)
   neighbors:
     description:
       - Check the operational state of given interface C(name) for LLDP neighbor.
@@ -78,6 +84,7 @@ options:
         operationally up and C(down) means present and operationally C(down)
     default: present
     choices: ['present', 'absent', 'up', 'down']
+extends_documentation_fragment: eos
 """
 
 EXAMPLES = """
@@ -180,7 +187,7 @@ def parse_shutdown(configobj, name):
     cfg = configobj['interface %s' % name]
     cfg = '\n'.join(cfg.children)
     match = re.search(r'shutdown', cfg, re.M)
-    return True if match else False
+    return bool(match)
 
 
 def parse_config_argument(configobj, name, arg=None):
@@ -328,7 +335,7 @@ def check_declarative_intent_params(module, want, result):
         if result['changed']:
             sleep(w['delay'])
 
-        command = 'show interfaces %s' % w['name']
+        command = {'command': 'show interfaces %s' % w['name'], 'output': 'text'}
         output = run_commands(module, [command])
 
         if want_state in ('up', 'down'):
@@ -361,7 +368,8 @@ def check_declarative_intent_params(module, want, result):
             have_host = []
             have_port = []
             if have_neighbors is None:
-                have_neighbors = run_commands(module, ['show lldp neighbors {}'.format(w['name'])])
+                command = {'command': 'show lldp neighbors {0}'.format(w['name']), 'output': 'text'}
+                have_neighbors = run_commands(module, [command])
 
             if have_neighbors[0]:
                 lines = have_neighbors[0].strip().split('\n')

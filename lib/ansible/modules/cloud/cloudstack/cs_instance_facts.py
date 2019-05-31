@@ -19,22 +19,26 @@ module: cs_instance_facts
 short_description: Gathering facts from the API of instances from Apache CloudStack based clouds.
 description:
     - Gathering facts from the API of an instance.
-version_added: "2.1"
-author: "René Moser (@resmo)"
+version_added: '2.1'
+author: René Moser (@resmo)
 options:
   name:
     description:
       - Name or display name of the instance.
+    type: str
     required: true
   domain:
     description:
       - Domain the instance is related to.
+    type: str
   account:
     description:
       - Account the instance is related to.
+    type: str
   project:
     description:
       - Project the instance is related to.
+    type: str
 extends_documentation_fragment: cloudstack
 '''
 
@@ -43,133 +47,209 @@ EXAMPLES = '''
   cs_instance_facts:
     name: web-vm-1
   delegate_to: localhost
+  register: vm
 
 - debug:
     var: cloudstack_instance
+
+- debug:
+    var: vm
 '''
 
 RETURN = '''
 ---
-cloudstack_instance.id:
+id:
   description: UUID of the instance.
   returned: success
-  type: string
+  type: str
   sample: 04589590-ac63-4ffc-93f5-b698b8ac38b6
-cloudstack_instance.name:
+name:
   description: Name of the instance.
   returned: success
-  type: string
+  type: str
   sample: web-01
-cloudstack_instance.display_name:
+display_name:
   description: Display name of the instance.
   returned: success
-  type: string
+  type: str
   sample: web-01
-cloudstack_instance.group:
+group:
   description: Group name of the instance is related.
   returned: success
-  type: string
+  type: str
   sample: web
 created:
   description: Date of the instance was created.
   returned: success
-  type: string
+  type: str
   sample: 2014-12-01T14:57:57+0100
-cloudstack_instance.password_enabled:
+password_enabled:
   description: True if password setting is enabled.
   returned: success
-  type: boolean
+  type: bool
   sample: true
-cloudstack_instance.password:
+password:
   description: The password of the instance if exists.
   returned: success
-  type: string
+  type: str
   sample: Ge2oe7Do
-cloudstack_instance.ssh_key:
+ssh_key:
   description: Name of SSH key deployed to instance.
   returned: success
-  type: string
+  type: str
   sample: key@work
-cloudstack_instance.domain:
+domain:
   description: Domain the instance is related to.
   returned: success
-  type: string
+  type: str
   sample: example domain
-cloudstack_instance.account:
+account:
   description: Account the instance is related to.
   returned: success
-  type: string
+  type: str
   sample: example account
-cloudstack_instance.project:
+project:
   description: Name of project the instance is related to.
   returned: success
-  type: string
+  type: str
   sample: Production
-cloudstack_instance.default_ip:
+default_ip:
   description: Default IP address of the instance.
   returned: success
-  type: string
+  type: str
   sample: 10.23.37.42
-cloudstack_instance.public_ip:
+public_ip:
   description: Public IP address with instance via static NAT rule.
   returned: success
-  type: string
+  type: str
   sample: 1.2.3.4
-cloudstack_instance.iso:
+iso:
   description: Name of ISO the instance was deployed with.
   returned: success
-  type: string
+  type: str
   sample: Debian-8-64bit
-cloudstack_instance.template:
+template:
   description: Name of template the instance was deployed with.
   returned: success
-  type: string
+  type: str
   sample: Debian-8-64bit
-cloudstack_instance.service_offering:
+service_offering:
   description: Name of the service offering the instance has.
   returned: success
-  type: string
+  type: str
   sample: 2cpu_2gb
-cloudstack_instance.zone:
+zone:
   description: Name of zone the instance is in.
   returned: success
-  type: string
+  type: str
   sample: ch-gva-2
-cloudstack_instance.state:
+state:
   description: State of the instance.
   returned: success
-  type: string
+  type: str
   sample: Running
-cloudstack_instance.security_groups:
+security_groups:
   description: Security groups the instance is in.
   returned: success
   type: list
   sample: '[ "default" ]'
-cloudstack_instance.affinity_groups:
+affinity_groups:
   description: Affinity groups the instance is in.
   returned: success
   type: list
   sample: '[ "webservers" ]'
-cloudstack_instance.tags:
+tags:
   description: List of resource tags associated with the instance.
   returned: success
-  type: dict
+  type: list
   sample: '[ { "key": "foo", "value": "bar" } ]'
-cloudstack_instance.hypervisor:
+hypervisor:
   description: Hypervisor related to this instance.
   returned: success
-  type: string
+  type: str
   sample: KVM
-cloudstack_instance.instance_name:
+host:
+  description: Host the instance is running on.
+  returned: success and instance is running
+  type: str
+  sample: host01.example.com
+  version_added: '2.6'
+instance_name:
   description: Internal name of the instance (ROOT admin only).
   returned: success
-  type: string
+  type: str
   sample: i-44-3992-VM
-cloudstack_instance.volumes:
+volumes:
   description: List of dictionaries of the volumes attached to the instance.
   returned: success
   type: list
   sample: '[ { name: "ROOT-1369", type: "ROOT", size: 10737418240 }, { name: "data01, type: "DATADISK", size: 10737418240 } ]'
+nic:
+  description: List of dictionaries of the instance nics.
+  returned: success
+  type: complex
+  version_added: '2.8'
+  contains:
+    broadcasturi:
+      description: The broadcast uri of the nic.
+      returned: success
+      type: str
+      sample: vlan://2250
+    gateway:
+      description: The gateway of the nic.
+      returned: success
+      type: str
+      sample: 10.1.2.1
+    id:
+      description: The ID of the nic.
+      returned: success
+      type: str
+      sample: 5dc74fa3-2ec3-48a0-9e0d-6f43365336a9
+    ipaddress:
+      description: The ip address of the nic.
+      returned: success
+      type: str
+      sample: 10.1.2.3
+    isdefault:
+      description: True if nic is default, false otherwise.
+      returned: success
+      type: bool
+      sample: true
+    isolationuri:
+      description: The isolation uri of the nic.
+      returned: success
+      type: str
+      sample: vlan://2250
+    macaddress:
+      description: The mac address of the nic.
+      returned: success
+      type: str
+      sample: 06:a2:03:00:08:12
+    netmask:
+      description: The netmask of the nic.
+      returned: success
+      type: str
+      sample: 255.255.255.0
+    networkid:
+      description: The ID of the corresponding network.
+      returned: success
+      type: str
+      sample: 432ce27b-c2bb-4e12-a88c-a919cd3a3017
+    networkname:
+      description: The name of the corresponding network.
+      returned: success
+      type: str
+      sample: network1
+    traffictype:
+      description: The traffic type of the nic.
+      returned: success
+      type: str
+      sample: Guest
+    type:
+      description: The type of the network.
+      returned: success
+      type: str
+      sample: Shared
 '''
 
 from ansible.module_utils.basic import AnsibleModule
@@ -192,6 +272,7 @@ class AnsibleCloudStackInstanceFacts(AnsibleCloudStack):
             'isoname': 'iso',
             'templatename': 'template',
             'keypair': 'ssh_key',
+            'hostname': 'host',
         }
         self.facts = {
             'cloudstack_instance': None,
@@ -206,11 +287,12 @@ class AnsibleCloudStackInstanceFacts(AnsibleCloudStack):
                 'account': self.get_account(key='name'),
                 'domainid': self.get_domain(key='id'),
                 'projectid': self.get_project(key='id'),
+                'fetch_list': True,
             }
             # Do not pass zoneid, as the instance name must be unique across zones.
             instances = self.query_api('listVirtualMachines', **args)
             if instances:
-                for v in instances['virtualmachine']:
+                for v in instances:
                     if instance_name.lower() in [v['name'].lower(), v['displayname'].lower(), v['id']]:
                         self.instance = v
                         break
@@ -224,11 +306,12 @@ class AnsibleCloudStackInstanceFacts(AnsibleCloudStack):
                 'domainid': self.get_domain(key='id'),
                 'projectid': self.get_project(key='id'),
                 'virtualmachineid': instance['id'],
+                'fetch_list': True,
             }
 
             volumes = self.query_api('listVolumes', **args)
             if volumes:
-                for vol in volumes['volume']:
+                for vol in volumes:
                     volume_details.append({'size': vol['size'], 'type': vol['type'], 'name': vol['name']})
         return volume_details
 
@@ -236,8 +319,7 @@ class AnsibleCloudStackInstanceFacts(AnsibleCloudStack):
         instance = self.get_instance()
         if not instance:
             self.module.fail_json(msg="Instance not found: %s" % self.module.params.get('name'))
-        self.facts['cloudstack_instance'] = self.get_result(instance)
-        return self.facts
+        return instance
 
     def get_result(self, instance):
         super(AnsibleCloudStackInstanceFacts, self).get_result(instance)
@@ -256,6 +338,7 @@ class AnsibleCloudStackInstanceFacts(AnsibleCloudStack):
                 for nic in instance['nic']:
                     if nic['isdefault'] and 'ipaddress' in nic:
                         self.result['default_ip'] = nic['ipaddress']
+                self.result['nic'] = instance['nic']
             volumes = self.get_volumes(instance)
             if volumes:
                 self.result['volumes'] = volumes
@@ -275,10 +358,12 @@ def main():
         argument_spec=argument_spec,
         supports_check_mode=True,
     )
-
-    cs_instance_facts = AnsibleCloudStackInstanceFacts(module=module).run()
-    cs_facts_result = dict(changed=False, ansible_facts=cs_instance_facts)
-    module.exit_json(**cs_facts_result)
+    acs_instance_facts = AnsibleCloudStackInstanceFacts(module=module)
+    cs_instance_facts = acs_instance_facts.get_result_and_facts(
+        facts_name='cloudstack_instance',
+        resource=acs_instance_facts.run()
+    )
+    module.exit_json(**cs_instance_facts)
 
 
 if __name__ == '__main__':

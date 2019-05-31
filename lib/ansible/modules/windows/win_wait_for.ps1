@@ -1,7 +1,6 @@
 #!powershell
-# This file is part of Ansible
 
-# Copyright (c) 2017 Ansible Project
+# Copyright: (c) 2017, Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 #Requires -Module Ansible.ModuleUtils.Legacy
@@ -17,54 +16,47 @@ $exclude_hosts = Get-AnsibleParam -obj $params -name "exclude_hosts" -type "list
 $hostname = Get-AnsibleParam -obj $params -name "host" -type "str" -default "127.0.0.1"
 $path = Get-AnsibleParam -obj $params -name "path" -type "path"
 $port = Get-AnsibleParam -obj $params -name "port" -type "int"
-$search_regex = Get-AnsibleParam -obj $params -name "search_regex" -type "string"
+$search_regex = Get-AnsibleParam -obj $params -name "search_regex" -type "str"
 $sleep = Get-AnsibleParam -obj $params -name "sleep" -type "int" -default 1
 $state = Get-AnsibleParam -obj $params -name "state" -type "str" -default "started" -validateset "present","started","stopped","absent","drained"
 $timeout = Get-AnsibleParam -obj $params -name "timeout" -type "int" -default 300
 
 $result = @{
     changed = $false
+    elapsed = 0
 }
 
 # validate the input with the various options
-if ($port -ne $null -and $path -ne $null) {
+if ($null -ne $port -and $null -ne $path) {
     Fail-Json $result "port and path parameter can not both be passed to win_wait_for"
 }
-if ($exclude_hosts -ne $null -and $state -ne "drained") {
+if ($null -ne $exclude_hosts -and $state -ne "drained") {
     Fail-Json $result "exclude_hosts should only be with state=drained"
 }
-if ($path -ne $null) {
+if ($null -ne $path) {
     if ($state -in @("stopped","drained")) {
         Fail-Json $result "state=$state should only be used for checking a port in the win_wait_for module"
     }
-    
-    if ($exclude_hosts -ne $null) {
+
+    if ($null -ne $exclude_hosts) {
         Fail-Json $result "exclude_hosts should only be used when checking a port and state=drained in the win_wait_for module"
     }
 }
 
-if ($port -ne $null) {
-    if ($search_regex -ne $null) {
+if ($null -ne $port) {
+    if ($null -ne $search_regex) {
         Fail-Json $result "search_regex should by used when checking a string in a file in the win_wait_for module"
     }
 
-    if ($exclude_hosts -ne $null -and $state -ne "drained") {
+    if ($null -ne $exclude_hosts -and $state -ne "drained") {
         Fail-Json $result "exclude_hosts should be used when state=drained in the win_wait_for module"
     }
 }
 
 Function Test-Port($hostname, $port) {
-    # try and resolve the IP/Host, if it fails then just use the host passed in
-    try {
-        $resolve_hostname = ([System.Net.Dns]::GetHostEntry($hostname)).HostName
-    } catch {
-        # oh well just use the IP addres
-        $resolve_hostname = $hostname
-    }
-
     $timeout = $connect_timeout * 1000
     $socket = New-Object -TypeName System.Net.Sockets.TcpClient
-    $connect = $socket.BeginConnect($resolve_hostname, $port, $null, $null)
+    $connect = $socket.BeginConnect($hostname, $port, $null, $null)
     $wait = $connect.AsyncWaitHandle.WaitOne($timeout, $false)
 
     if ($wait) {
@@ -93,8 +85,8 @@ Function Get-PortConnections($hostname, $port) {
     } else {
         $active_connections = $conn_info.GetActiveTcpConnections() | Where-Object { $_.LocalEndPoint.Address -eq $hostname -and $_.LocalEndPoint.Port -eq $port }
     }
-    
-    if ($active_connections -ne $null) {
+
+    if ($null -ne $active_connections) {
         foreach ($active_connection in $active_connections) {
             $connections += $active_connection.RemoteEndPoint.Address
         }
@@ -105,22 +97,22 @@ Function Get-PortConnections($hostname, $port) {
 
 $module_start = Get-Date
 
-if ($delay -ne $null) {
+if ($null -ne $delay) {
     Start-Sleep -Seconds $delay
 }
 
 $attempts = 0
-if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
+if ($null -eq $path -and $null -eq $port -and $state -ne "drained") {
     Start-Sleep -Seconds $timeout
-} elseif ($path -ne $null) {
+} elseif ($null -ne $path) {
     if ($state -in @("present", "started")) {
         # check if the file exists or string exists in file
         $start_time = Get-Date
         $complete = $false
         while (((Get-Date) - $start_time).TotalSeconds -lt $timeout) {
             $attempts += 1
-            if (Test-FilePath -path $path) {
-                if ($search_regex -eq $null) {
+            if (Test-AnsiblePath -Path $path) {
+                if ($null -eq $search_regex) {
                     $complete = $true
                     break
                 } else {
@@ -135,14 +127,13 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         }
 
         if ($complete -eq $false) {
-            $elapsed_seconds = ((Get-Date) - $module_start).TotalSeconds
-            $result.attempts = $attempts
-            $result.elapsed = $elapsed_seconds
-            if ($search_regex -eq $null) {
+            $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+            $result.wait_attempts = $attempts
+            if ($null -eq $search_regex) {
                 Fail-Json $result "timeout while waiting for file $path to be present"
             } else {
                 Fail-Json $result "timeout while waiting for string regex $search_regex in file $path to match"
-            }  
+            }
         }
     } elseif ($state -in @("absent")) {
         # check if the file is deleted or string doesn't exist in file
@@ -150,8 +141,8 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         $complete = $false
         while (((Get-Date) - $start_time).TotalSeconds -lt $timeout) {
             $attempts += 1
-            if (Test-FilePath -path $path) {
-                if ($search_regex -ne $null) {
+            if (Test-AnsiblePath -Path $path) {
+                if ($null -ne $search_regex) {
                     $file_contents = Get-Content -Path $path -Raw
                     if ($file_contents -notmatch $search_regex) {
                         $complete = $true
@@ -167,17 +158,16 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         }
 
         if ($complete -eq $false) {
-            $elapsed_seconds = ((Get-Date) - $module_start).TotalSeconds
-            $result.attempts = $attempts
-            $result.elapsed = $elapsed_seconds
-            if ($search_regex -eq $null) {
+            $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+            $result.wait_attempts = $attempts
+            if ($null -eq $search_regex) {
                 Fail-Json $result "timeout while waiting for file $path to be absent"
             } else {
                 Fail-Json $result "timeout while waiting for string regex $search_regex in file $path to not match"
-            }            
+            }
         }
     }
-} elseif ($port -ne $null) {
+} elseif ($null -ne $port) {
     if ($state -in @("started","present")) {
         # check that the port is online and is listening
         $start_time = Get-Date
@@ -194,9 +184,8 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         }
 
         if ($complete -eq $false) {
-            $elapsed_seconds = ((Get-Date) - $module_start).TotalSeconds
-            $result.attempts = $attempts
-            $result.elapsed = $elapsed_seconds
+            $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+            $result.wait_attempts = $attempts
             Fail-Json $result "timeout while waiting for $($hostname):$port to start listening"
         }
     } elseif ($state -in @("stopped","absent")) {
@@ -215,9 +204,8 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         }
 
         if ($complete -eq $false) {
-            $elapsed_seconds = ((Get-Date) - $module_start).TotalSeconds
-            $result.attempts = $attempts
-            $result.elapsed = $elapsed_seconds
+            $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+            $result.wait_attempts = $attempts
             Fail-Json $result "timeout while waiting for $($hostname):$port to stop listening"
         }
     } elseif ($state -eq "drained") {
@@ -227,7 +215,7 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         while (((Get-Date) - $start_time).TotalSeconds -lt $timeout) {
             $attempts += 1
             $active_connections = Get-PortConnections -hostname $hostname -port $port
-            if ($active_connections -eq $null) {
+            if ($null -eq $active_connections) {
                 $complete = $true
                 break
             } elseif ($active_connections.Count -eq 0) {
@@ -236,7 +224,7 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
                 break
             } else {
                 # there are listeners, check if we should ignore any hosts
-                if ($exclude_hosts -ne $null) {
+                if ($null -ne $exclude_hosts) {
                     $connection_info = $active_connections
                     foreach ($exclude_host in $exclude_hosts) {
                         try {
@@ -256,15 +244,14 @@ if ($path -eq $null -and $port -eq $null -and $state -eq "drained") {
         }
 
         if ($complete -eq $false) {
-            $elapsed_seconds = ((Get-Date) - $module_start).TotalSeconds
-            $result.attempts = $attempts
-            $result.elapsed = $elapsed_seconds
+            $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+            $result.wait_attempts = $attempts
             Fail-Json $result "timeout while waiting for $($hostname):$port to drain"
         }
-    }  
+    }
 }
 
-$result.attempts = $attempts
 $result.elapsed = ((Get-Date) - $module_start).TotalSeconds
+$result.wait_attempts = $attempts
 
 Exit-Json $result

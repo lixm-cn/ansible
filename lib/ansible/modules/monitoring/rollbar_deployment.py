@@ -59,17 +59,25 @@ options:
         self-signed certificates.
     required: false
     default: 'yes'
-    choices: ['yes', 'no']
+    type: bool
 '''
 
 EXAMPLES = '''
-- rollbar_deployment:
+  - name: Rollbar deployment notification
+    rollbar_deployment:
     token: AAAAAA
     environment: staging
     user: ansible
     revision: '4.2'
     rollbar_user: admin
     comment: Test Deploy
+
+  - name: Notify rollbar about current git revision deployment by current user
+    rollbar_deployment:
+    token: "{{ rollbar_access_token }}"
+    environment: production
+    revision: "{{ lookup('pipe', 'git rev-parse HEAD') }}"
+    user: "{{ lookup('env', 'USER') }}"
 '''
 import traceback
 
@@ -120,7 +128,7 @@ def main():
 
     try:
         data = urlencode(params)
-        response, info = fetch_url(module, url, data=data)
+        response, info = fetch_url(module, url, data=data, method='POST')
     except Exception as e:
         module.fail_json(msg='Unable to notify Rollbar: %s' % to_native(e), exception=traceback.format_exc())
     else:

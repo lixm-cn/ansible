@@ -26,52 +26,36 @@ options:
     user:
       description:
         - User that receives the permissions specified by the role.
-      required: False
-      default: null
     team:
       description:
         - Team that receives the permissions specified by the role.
-      required: False
-      default: null
     role:
       description:
         - The role type to grant/revoke.
       required: True
-      choices: ["admin", "read", "member", "execute", "adhoc", "update", "use", "auditor"]
+      choices: ["admin", "read", "member", "execute", "adhoc", "update", "use", "auditor", "project_admin", "inventory_admin", "credential_admin",
+                "workflow_admin", "notification_admin", "job_template_admin"]
     target_team:
       description:
         - Team that the role acts on.
-      required: False
-      default: null
     inventory:
       description:
         - Inventory the role acts on.
-      required: False
-      default: null
     job_template:
       description:
-        - The job_template the role acts on.
-      required: False
-      default: null
+        - The job template the role acts on.
     credential:
       description:
         - Credential the role acts on.
-      required: False
-      default: null
     organization:
       description:
-        - Organiation the role acts on.
-      required: False
-      default: null
+        - Organization the role acts on.
     project:
       description:
         - Project the role acts on.
-      required: False
-      default: null
     state:
       description:
         - Desired state of the resource.
-      required: False
       default: "present"
       choices: ["present", "absent"]
 extends_documentation_fragment: tower
@@ -88,11 +72,11 @@ EXAMPLES = '''
     tower_config_file: "~/tower_cli.cfg"
 '''
 
-from ansible.module_utils.ansible_tower import tower_argument_spec, tower_auth_config, tower_check_mode, HAS_TOWER_CLI
+from ansible.module_utils.ansible_tower import TowerModule, tower_auth_config, tower_check_mode
 
 try:
     import tower_cli
-    import tower_cli.utils.exceptions as exc
+    import tower_cli.exceptions as exc
 
     from tower_cli.conf import settings
 except ImportError:
@@ -127,11 +111,11 @@ def update_resources(module, p):
 
 def main():
 
-    argument_spec = tower_argument_spec()
-    argument_spec.update(dict(
+    argument_spec = dict(
         user=dict(),
         team=dict(),
-        role=dict(choices=["admin", "read", "member", "execute", "adhoc", "update", "use", "auditor"]),
+        role=dict(choices=["admin", "read", "member", "execute", "adhoc", "update", "use", "auditor", "project_admin", "inventory_admin", "credential_admin",
+                           "workflow_admin", "notification_admin", "job_template_admin"]),
         target_team=dict(),
         inventory=dict(),
         job_template=dict(),
@@ -139,15 +123,12 @@ def main():
         organization=dict(),
         project=dict(),
         state=dict(choices=['present', 'absent'], default='present'),
-    ))
+    )
 
-    module = AnsibleModule(argument_spec=argument_spec, supports_check_mode=True)
-
-    if not HAS_TOWER_CLI:
-        module.fail_json(msg='ansible-tower-cli required for this module')
+    module = TowerModule(argument_spec=argument_spec, supports_check_mode=True)
 
     role_type = module.params.pop('role')
-    state = module.params.get('state')
+    state = module.params.pop('state')
 
     json_output = {'role': role_type, 'state': state}
 
@@ -165,13 +146,12 @@ def main():
                 json_output['id'] = result['id']
             elif state == 'absent':
                 result = role.revoke(**params)
-        except (exc.ConnectionError, exc.BadRequest, exc.NotFound) as excinfo:
+        except (exc.ConnectionError, exc.BadRequest, exc.NotFound, exc.AuthError) as excinfo:
             module.fail_json(msg='Failed to update role: {0}'.format(excinfo), changed=False)
 
     json_output['changed'] = result['changed']
     module.exit_json(**json_output)
 
 
-from ansible.module_utils.basic import AnsibleModule
 if __name__ == '__main__':
     main()

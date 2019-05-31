@@ -1,12 +1,13 @@
 cryptography
 jinja2
 mock
-paramiko
+packaging  # needed for update-bundled and changelog
 pycodestyle
-pylint ; python_version >= '2.7' # pylint 1.5.3+ is required for non-buggy JSON output, but 1.4+ requires python 2.7+
+pylint ; python_version >= '3.5' # pylint 2.0.0 and later require python 3+
 pytest
-rstcheck
+rstcheck ; python_version >= '2.7' # rstcheck requires python 2.7+
 sphinx
+straight.plugin  # needed for hacking/build-ansible which will host changelog generation
 virtualenv
 voluptuous
 yamllint

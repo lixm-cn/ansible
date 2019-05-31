@@ -1,4 +1,4 @@
-posix/ci/cloud/group1/vcenter
-posix/ci/cloud/group1/smoketest
+shippable/vcenter/group1
+shippable/vcenter/smoketest
 cloud/vcenter
-destructive
+needs/target/prepare_vmware_tests

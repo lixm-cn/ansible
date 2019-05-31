@@ -21,7 +21,7 @@ __metaclass__ = type
 
 import json
 
-from ansible.compat.tests.mock import patch
+from units.compat.mock import patch
 from ansible.modules.network.nxos import nxos_vlan
 from .nxos_module import TestNxosModule, load_fixture, set_module_args
 
@@ -44,7 +44,7 @@ class TestNxosVlanModule(TestNxosModule):
 
         self.mock_get_capabilities = patch('ansible.modules.network.nxos.nxos_vlan.get_capabilities')
         self.get_capabilities = self.mock_get_capabilities.start()
-        self.get_capabilities.return_value = {'network_api': 'cliconf'}
+        self.get_capabilities.return_value = {'device_info': {'network_os_platform': 'N9K-9000v'}, 'network_api': 'cliconf'}
 
     def tearDown(self):
         super(TestNxosVlanModule, self).tearDown()

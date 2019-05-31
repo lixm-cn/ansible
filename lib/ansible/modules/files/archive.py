@@ -13,47 +13,64 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
                     'supported_by': 'community'}
 
-DOCUMENTATION = '''
+DOCUMENTATION = r'''
 ---
 module: archive
 version_added: '2.3'
 short_description: Creates a compressed archive of one or more files or trees
 extends_documentation_fragment: files
 description:
-    - Packs an archive. It is the opposite of M(unarchive). By default, it assumes the compression source exists on the target. It will not copy the
-      source file from the local system to the target before archiving. Source files can be deleted after archival by specifying I(remove=True).
+    - Packs an archive.
+    - It is the opposite of M(unarchive).
+    - By default, it assumes the compression source exists on the target.
+    - It will not copy the source file from the local system to the target before archiving.
+    - Source files can be deleted after archival by specifying I(remove=True).
 options:
   path:
     description:
       - Remote absolute path, glob, or list of paths or globs for the file or files to compress or archive.
+    type: list
     required: true
   format:
     description:
       - The type of compression to use.
-    choices: [ bz2, gz, tar, zip ]
+      - Support for xz was added in Ansible 2.5.
+    type: str
+    choices: [ bz2, gz, tar, xz, zip ]
     default: gz
   dest:
     description:
-      - The file name of the destination archive. This is required when C(path) refers to multiple files by either specifying a glob, a directory or
-        multiple paths in a list.
+      - The file name of the destination archive.
+      - This is required when C(path) refers to multiple files by either specifying a glob, a directory or multiple paths in a list.
+    type: path
   exclude_path:
-    version_added: '2.4'
     description:
-      - Remote absolute path, glob, or list of paths or globs for the file or files to exclude from the archive
+      - Remote absolute path, glob, or list of paths or globs for the file or files to exclude from the archive.
+    type: list
+    version_added: '2.4'
+  force_archive:
+    version_added: '2.8'
+    description:
+      - Allow you to force the module to treat this as an archive even if only a single file is specified.
+      - By default behaviour is maintained. i.e A when a single file is specified it is compressed only (not archived).
+    type: bool
+    default: false
   remove:
     description:
       - Remove any added source files and trees after adding to archive.
     type: bool
-    default: 'no'
-
+    default: no
+notes:
+    - Requires tarfile, zipfile, gzip and bzip2 packages on target host.
+    - Requires lzma or backports.lzma if using xz format.
+    - Can produce I(gzip), I(bzip2), I(lzma) and I(zip) compressed files or archives.
+seealso:
+- module: unarchive
 author:
 - Ben Doherty (@bendoh)
-notes:
-    - requires tarfile, zipfile, gzip, and bzip2 packages on target host
-    - can produce I(gzip), I(bzip2) and I(zip) compressed files or archives
 '''
 
-EXAMPLES = '''
+EXAMPLES = r'''
 - name: Compress directory /path/to/foo/ into /path/to/foo.tgz
   archive:
     path: /path/to/foo
@@ -95,9 +112,22 @@ EXAMPLES = '''
     exclude_path:
     - /path/to/foo/ba*
     format: bz2
+
+- name: Use gzip to compress a single archive (i.e don't archive it first with tar)
+  archive:
+    path: /path/to/foo/single.file
+    dest: /path/file.gz
+    format: gz
+
+- name: Create a tar.gz archive of a single file.
+  archive:
+    path: /path/to/foo/single.file
+    dest: /path/file.tar.gz
+    format: gz
+    force_archive: true
 '''
 
-RETURN = '''
+RETURN = r'''
 state:
     description:
         The current state of the archived file.
@@ -105,7 +135,7 @@ state:
         If 'compress', then the file source file is in the compressed state.
         If 'archive', then the source file or paths are currently archived.
         If 'incomplete', then an archive was created, but not all source paths were found.
-    type: string
+    type: str
     returned: always
 missing:
     description: Any files that were missing from the source.
@@ -117,7 +147,7 @@ archived:
     returned: success
 arcroot:
     description: The archive root.
-    type: string
+    type: str
     returned: always
 expanded_paths:
     description: The list of matching paths from paths argument.
@@ -133,6 +163,7 @@ import bz2
 import filecmp
 import glob
 import gzip
+import io
 import os
 import re
 import shutil
@@ -140,17 +171,36 @@ import tarfile
 import zipfile
 from traceback import format_exc
 
-from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.basic import AnsibleModule, missing_required_lib
 from ansible.module_utils._text import to_native
+from ansible.module_utils.six import PY3
+
+
+LZMA_IMP_ERR = None
+if PY3:
+    try:
+        import lzma
+        HAS_LZMA = True
+    except ImportError:
+        LZMA_IMP_ERR = format_exc()
+        HAS_LZMA = False
+else:
+    try:
+        from backports import lzma
+        HAS_LZMA = True
+    except ImportError:
+        LZMA_IMP_ERR = format_exc()
+        HAS_LZMA = False
 
 
 def main():
     module = AnsibleModule(
         argument_spec=dict(
             path=dict(type='list', required=True),
-            format=dict(type='str', default='gz', choices=['bz2', 'gz', 'tar', 'zip']),
+            format=dict(type='str', default='gz', choices=['bz2', 'gz', 'tar', 'xz', 'zip']),
             dest=dict(type='path'),
             exclude_path=dict(type='list'),
+            force_archive=dict(type='bool', default=False),
             remove=dict(type='bool', default=False),
         ),
         add_file_common_args=True,
@@ -167,6 +217,7 @@ def main():
     expanded_paths = []
     expanded_exclude_paths = []
     format = params['format']
+    force_archive = params['force_archive']
     globby = False
     changed = False
     state = 'absent'
@@ -174,6 +225,12 @@ def main():
     # Simple or archive file compression (inapplicable with 'zip' since it's always an archive)
     archive = False
     successes = []
+
+    # Fail early
+    if not HAS_LZMA and format == 'xz':
+        module.fail_json(msg=missing_required_lib("lzma or backports.lzma", reason="when using xz format"),
+                         exception=LZMA_IMP_ERR)
+        module.fail_json(msg="lzma or backports.lzma is required when using xz format.")
 
     for path in paths:
         path = os.path.expanduser(os.path.expandvars(path))
@@ -207,9 +264,13 @@ def main():
     if not expanded_paths:
         return module.fail_json(path=', '.join(paths), expanded_paths=', '.join(expanded_paths), msg='Error, no source paths were found')
 
-    # If we actually matched multiple files or TRIED to, then
-    # treat this as a multi-file archive
-    archive = globby or os.path.isdir(expanded_paths[0]) or len(expanded_paths) > 1
+    # Only try to determine if we are working with an archive or not if we haven't set archive to true
+    if not force_archive:
+        # If we actually matched multiple files or TRIED to, then
+        # treat this as a multi-file archive
+        archive = globby or os.path.isdir(expanded_paths[0]) or len(expanded_paths) > 1
+    else:
+        archive = True
 
     # Default created file name (for single-file archives) to
     # <file>.<format>
@@ -240,8 +301,13 @@ def main():
             arcroot += os.sep
 
         # Don't allow archives to be created anywhere within paths to be removed
-        if remove and os.path.isdir(path) and dest.startswith(path):
-            module.fail_json(path=', '.join(paths), msg='Error, created archive can not be contained in source paths when remove=True')
+        if remove and os.path.isdir(path):
+            path_dir = path
+            if path[-1] != '/':
+                path_dir += '/'
+
+            if dest.startswith(path_dir):
+                module.fail_json(path=', '.join(paths), msg='Error, created archive can not be contained in source paths when remove=True')
 
         if os.path.lexists(path) and path not in expanded_exclude_paths:
             archive_paths.append(path)
@@ -251,7 +317,7 @@ def main():
     # No source files were found but the named archive exists: are we 'compress' or 'archive' now?
     if len(missing) == len(expanded_paths) and dest and os.path.exists(dest):
         # Just check the filename to know if it's an archive or simple compressed file
-        if re.search(r'(\.tar|\.tar\.gz|\.tgz|.tbz2|\.tar\.bz2|\.zip)$', os.path.basename(dest), re.IGNORECASE):
+        if re.search(r'(\.tar|\.tar\.gz|\.tgz|\.tbz2|\.tar\.bz2|\.tar\.xz|\.zip)$', os.path.basename(dest), re.IGNORECASE):
             state = 'archive'
         else:
             state = 'compress'
@@ -286,6 +352,12 @@ def main():
                     # Easier compression using tarfile module
                     elif format == 'gz' or format == 'bz2':
                         arcfile = tarfile.open(dest, 'w|' + format)
+
+                    # python3 tarfile module allows xz format but for python2 we have to create the tarfile
+                    # in memory and then compress it with lzma.
+                    elif format == 'xz':
+                        arcfileIO = io.BytesIO()
+                        arcfile = tarfile.open(fileobj=arcfileIO, mode='w')
 
                     # Or plain tar archiving
                     elif format == 'tar':
@@ -342,6 +414,11 @@ def main():
                     arcfile.close()
                     state = 'archive'
 
+                if format == 'xz':
+                    with lzma.open(dest, 'wb') as f:
+                        f.write(arcfileIO.getvalue())
+                    arcfileIO.close()
+
                 if errors:
                     module.fail_json(msg='Errors when writing archive at %s: %s' % (dest, '; '.join(errors)))
 
@@ -356,7 +433,7 @@ def main():
                     errors.append(path)
 
             if errors:
-                module.fail_json(dest=dest, msg='Error deleting some source files: ' + str(e), files=errors)
+                module.fail_json(dest=dest, msg='Error deleting some source files: ', files=errors)
 
         # Rudimentary check: If size changed then file changed. Not perfect, but easy.
         if not check_mode and os.path.getsize(dest) != size:
@@ -394,7 +471,10 @@ def main():
                         arcfile.write(path, path[len(arcroot):])
                         arcfile.close()
                         state = 'archive'  # because all zip files are archives
-
+                    elif format == 'tar':
+                        arcfile = tarfile.open(dest, 'w')
+                        arcfile.add(path)
+                        arcfile.close()
                     else:
                         f_in = open(path, 'rb')
 
@@ -402,6 +482,8 @@ def main():
                             f_out = gzip.open(dest, 'wb')
                         elif format == 'bz2':
                             f_out = bz2.BZ2File(dest, 'wb')
+                        elif format == 'xz':
+                            f_out = lzma.LZMAFile(dest, 'wb')
                         else:
                             raise OSError("Invalid format")
 
@@ -446,6 +528,7 @@ def main():
                      missing=missing,
                      expanded_paths=expanded_paths,
                      expanded_exclude_paths=expanded_exclude_paths)
+
 
 if __name__ == '__main__':
     main()

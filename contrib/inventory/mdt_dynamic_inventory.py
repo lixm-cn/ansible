@@ -27,10 +27,7 @@ maintainer: J Barnett (github @jbarnett1981)
 import argparse
 import json
 import pymssql
-try:
-    import configparser
-except ImportError:
-    import ConfigParser as configparser
+from ansible.module_utils.six.moves import configparser
 
 
 class MDTInventory(object):
@@ -128,6 +125,7 @@ class MDTInventory(object):
         parser.add_argument('--list', action='store_true', default=False, help='List instances')
         parser.add_argument('--host', action='store', help='Get all the variables about a specific instance')
         self.args = parser.parse_args()
+
 
 if __name__ == "__main__":
     # Run the script

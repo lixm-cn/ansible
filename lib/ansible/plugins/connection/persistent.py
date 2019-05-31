@@ -6,30 +6,35 @@ from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 DOCUMENTATION = """
-    author: Ansible Core Team
-    connection: persistent
-    short_description: Use a persistent unix socket for connection
+author: Ansible Core Team
+connection: persistent
+short_description: Use a persistent unix socket for connection
+description:
+  - This is a helper plugin to allow making other connections persistent.
+version_added: "2.3"
+options:
+  persistent_command_timeout:
+    type: int
     description:
-        - This is a helper plugin to allow making other connections persistent.
-    version_added: "2.3"
+      - Configures, in seconds, the amount of time to wait for a command to
+        return from the remote device.  If this timer is exceeded before the
+        command returns, the connection plugin will raise an exception and
+        close
+    default: 10
+    ini:
+      - section: persistent_connection
+        key: command_timeout
+    env:
+      - name: ANSIBLE_PERSISTENT_COMMAND_TIMEOUT
+    vars:
+      - name: ansible_command_timeout
 """
-import os
-import pty
-import json
-import subprocess
-
-from ansible import constants as C
+from ansible.executor.task_executor import start_connection
 from ansible.plugins.connection import ConnectionBase
-from ansible.module_utils._text import to_text
-from ansible.module_utils.six.moves import cPickle
 from ansible.module_utils.connection import Connection as SocketConnection
-from ansible.errors import AnsibleError
+from ansible.utils.display import Display
 
-try:
-    from __main__ import display
-except ImportError:
-    from ansible.utils.display import Display
-    display = Display()
+display = Display()
 
 
 class Connection(ConnectionBase):
@@ -65,46 +70,8 @@ class Connection(ConnectionBase):
         returns the socket path.
         """
         display.vvvv('starting connection from persistent connection plugin', host=self._play_context.remote_addr)
-        socket_path = self._start_connection()
+        variables = {'ansible_command_timeout': self.get_option('persistent_command_timeout')}
+        socket_path = start_connection(self._play_context, variables)
         display.vvvv('local domain socket path is %s' % socket_path, host=self._play_context.remote_addr)
         setattr(self, '_socket_path', socket_path)
         return socket_path
-
-    def _start_connection(self):
-        '''
-        Starts the persistent connection
-        '''
-        master, slave = pty.openpty()
-        p = subprocess.Popen(["ansible-connection", to_text(os.getppid())], stdin=slave, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdin = os.fdopen(master, 'wb', 0)
-        os.close(slave)
-
-        # Need to force a protocol that is compatible with both py2 and py3.
-        # That would be protocol=2 or less.
-        # Also need to force a protocol that excludes certain control chars as
-        # stdin in this case is a pty and control chars will cause problems.
-        # that means only protocol=0 will work.
-        src = cPickle.dumps(self._play_context.serialize(), protocol=0)
-        stdin.write(src)
-
-        stdin.write(b'\n#END_INIT#\n')
-
-        (stdout, stderr) = p.communicate()
-        stdin.close()
-
-        if p.returncode == 0:
-            result = json.loads(to_text(stdout, errors='surrogate_then_replace'))
-        else:
-            result = json.loads(to_text(stderr, errors='surrogate_then_replace'))
-
-        if 'messages' in result:
-            for msg in result.get('messages'):
-                display.vvvv('%s' % msg, host=self._play_context.remote_addr)
-
-        if 'error' in result:
-            if self._play_context.verbosity > 2:
-                msg = "The full traceback is:\n" + result['exception']
-                display.display(result['exception'], color=C.COLOR_ERROR)
-            raise AnsibleError(result['error'])
-
-        return result['socket_path']

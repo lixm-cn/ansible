@@ -13,7 +13,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 
 DOCUMENTATION = '''
 module: aws_direct_connect_gateway
-author: Gobin Sougrakpam (gobins@github)
+author: Gobin Sougrakpam (@gobins)
 version_added: "2.5"
 short_description: Manage AWS Direct Connect Gateway.
 description:
@@ -21,6 +21,9 @@ description:
   - Deletes AWS Direct Connect Gateway
   - Attaches Virtual Gateways to Direct Connect Gateway
   - Detaches Virtual Gateways to Direct Connect Gateway
+extends_documentation_fragment:
+    - aws
+    - ec2
 requirements: [ boto3 ]
 options:
   state:

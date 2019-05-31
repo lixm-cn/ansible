@@ -30,35 +30,30 @@ options:
    shared:
      description:
         - Whether this network is shared or not.
-     required: false
-     default: false
+     type: bool
+     default: 'no'
    admin_state_up:
      description:
         - Whether the state should be marked as up or down.
-     required: false
-     default: true
+     type: bool
+     default: 'yes'
    external:
      description:
         - Whether this network is externally accessible.
-     required: false
-     default: false
+     type: bool
+     default: 'no'
    state:
      description:
         - Indicate desired state of the resource.
      choices: ['present', 'absent']
-     required: false
      default: present
    provider_physical_network:
      description:
         - The physical network where this network object is implemented.
-     required: false
-     default: None
      version_added: "2.1"
    provider_network_type:
      description:
         - The type of physical network that maps to this network resource.
-     required: false
-     default: None
      version_added: "2.1"
    provider_segmentation_id:
      description:
@@ -66,20 +61,36 @@ options:
           attribute defines the segmentation model. For example, if the
           I(network_type) value is vlan, this ID is a vlan identifier. If
           the I(network_type) value is gre, this ID is a gre key.
-     required: false
-     default: None
      version_added: "2.1"
    project:
      description:
         - Project name or ID containing the network (name admin-only)
-     required: false
-     default: None
      version_added: "2.1"
    availability_zone:
      description:
        - Ignored. Present for backwards compatibility
-     required: false
-requirements: ["shade"]
+   port_security_enabled:
+     description:
+        -  Whether port security is enabled on the network or not.
+           Network will use OpenStack defaults if this option is
+           not utilised.
+     type: bool
+     version_added: "2.8"
+   mtu:
+     description:
+       -  The maximum transmission unit (MTU) value to address fragmentation.
+          Network will use OpenStack defaults if this option is
+          not provided.
+     type: int
+     version_added: "2.9"
+   dns_domain:
+     description:
+       -  The DNS domain value to set.
+          Network will use Openstack defaults if this option is
+          not provided.
+     version_added: "2.9"
+requirements:
+     - "openstacksdk"
 '''
 
 EXAMPLES = '''
@@ -99,11 +110,11 @@ network:
     contains:
         id:
             description: Network ID.
-            type: string
+            type: str
             sample: "4bb4f9a5-3bd2-4562-bf6a-d17a6341bb56"
         name:
             description: Network name.
-            type: string
+            type: str
             sample: "ext_network"
         shared:
             description: Indicates whether this network is shared across all tenants.
@@ -111,12 +122,16 @@ network:
             sample: false
         status:
             description: Network status.
-            type: string
+            type: str
             sample: "ACTIVE"
         mtu:
             description: The MTU of a network resource.
-            type: integer
+            type: int
             sample: 0
+        dns_domain:
+            description: The DNS domain of a network resource.
+            type: str
+            sample: "sample.openstack.org."
         admin_state_up:
             description: The administrative state of the network.
             type: bool
@@ -131,7 +146,7 @@ network:
             sample: true
         tenant_id:
             description: The tenant ID.
-            type: string
+            type: str
             sample: "06820f94b9f54b119636be2728d216fc"
         subnets:
             description: The associated subnets.
@@ -139,28 +154,20 @@ network:
             sample: []
         "provider:physical_network":
             description: The physical network where this network object is implemented.
-            type: string
+            type: str
             sample: my_vlan_net
         "provider:network_type":
             description: The type of physical network that maps to this network resource.
-            type: string
+            type: str
             sample: vlan
         "provider:segmentation_id":
             description: An isolated segment on the physical network.
-            type: string
+            type: str
             sample: 101
 '''
 
-from distutils.version import StrictVersion
-
-try:
-    import shade
-    HAS_SHADE = True
-except ImportError:
-    HAS_SHADE = False
-
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.openstack import openstack_full_argument_spec, openstack_module_kwargs
+from ansible.module_utils.openstack import openstack_full_argument_spec, openstack_module_kwargs, openstack_cloud_from_module
 
 
 def main():
@@ -171,21 +178,16 @@ def main():
         external=dict(default=False, type='bool'),
         provider_physical_network=dict(required=False),
         provider_network_type=dict(required=False),
-        provider_segmentation_id=dict(required=False),
+        provider_segmentation_id=dict(required=False, type='int'),
         state=dict(default='present', choices=['absent', 'present']),
-        project=dict(default=None)
+        project=dict(default=None),
+        port_security_enabled=dict(type='bool'),
+        mtu=dict(required=False, type='int'),
+        dns_domain=dict(required=False)
     )
 
     module_kwargs = openstack_module_kwargs()
     module = AnsibleModule(argument_spec, **module_kwargs)
-
-    if not HAS_SHADE:
-        module.fail_json(msg='shade is required for this module')
-
-    if (module.params['project'] and
-            StrictVersion(shade.__version__) < StrictVersion('1.6.0')):
-        module.fail_json(msg="To utilize project, the installed version of"
-                             "the shade library MUST be >=1.6.0")
 
     state = module.params['state']
     name = module.params['name']
@@ -195,10 +197,13 @@ def main():
     provider_physical_network = module.params['provider_physical_network']
     provider_network_type = module.params['provider_network_type']
     provider_segmentation_id = module.params['provider_segmentation_id']
-    project = module.params.pop('project')
+    project = module.params.get('project')
+    port_security_enabled = module.params.get('port_security_enabled')
+    mtu = module.params.get('mtu')
+    dns_domain = module.params.get('dns_domain')
 
+    sdk, cloud = openstack_cloud_from_module(module)
     try:
-        cloud = shade.openstack_cloud(**module.params)
         if project is not None:
             proj = cloud.get_project(project)
             if proj is None:
@@ -220,15 +225,16 @@ def main():
                 if provider_segmentation_id:
                     provider['segmentation_id'] = provider_segmentation_id
 
-                if provider and StrictVersion(shade.__version__) < StrictVersion('1.5.0'):
-                    module.fail_json(msg="Shade >= 1.5.0 required to use provider options")
-
                 if project_id is not None:
                     net = cloud.create_network(name, shared, admin_state_up,
-                                               external, provider, project_id)
+                                               external, provider, project_id,
+                                               port_security_enabled=port_security_enabled,
+                                               mtu_size=mtu, dns_domain=dns_domain)
                 else:
                     net = cloud.create_network(name, shared, admin_state_up,
-                                               external, provider)
+                                               external, provider,
+                                               port_security_enabled=port_security_enabled,
+                                               mtu_size=mtu, dns_domain=dns_domain)
                 changed = True
             else:
                 changed = False
@@ -241,7 +247,7 @@ def main():
                 cloud.delete_network(name)
                 module.exit_json(changed=True)
 
-    except shade.OpenStackCloudException as e:
+    except sdk.exceptions.OpenStackCloudException as e:
         module.fail_json(msg=str(e))
 
 

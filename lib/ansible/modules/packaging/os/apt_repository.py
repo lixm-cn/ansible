@@ -36,7 +36,7 @@ options:
     mode:
         description:
             - The octal mode for newly created files in sources.list.d
-        default: 0644
+        default: '0644'
         version_added: "1.6"
     update_cache:
         description:
@@ -103,10 +103,12 @@ EXAMPLES = '''
 '''
 
 import glob
+import json
 import os
 import re
 import sys
 import tempfile
+import copy
 
 try:
     import apt
@@ -118,12 +120,17 @@ except ImportError:
     distro = None
     HAVE_PYTHON_APT = False
 
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils._text import to_native
+from ansible.module_utils.urls import fetch_url
+
+
 if sys.version_info[0] < 3:
     PYTHON_APT = 'python-apt'
 else:
     PYTHON_APT = 'python3-apt'
 
-DEFAULT_SOURCES_PERM = int('0644', 8)
+DEFAULT_SOURCES_PERM = 0o0644
 
 VALID_SOURCE_TYPES = ('deb', 'deb-src')
 
@@ -178,7 +185,6 @@ class SourcesList(object):
             for n, valid, enabled, source, comment in sources:
                 if valid:
                     yield file, n, enabled, source, comment
-        raise StopIteration
 
     def _expand_path(self, filename):
         if '/' in filename:
@@ -276,6 +282,11 @@ class SourcesList(object):
         for filename, sources in list(self.files.items()):
             if sources:
                 d, fn = os.path.split(filename)
+                try:
+                    os.makedirs(d)
+                except OSError as err:
+                    if not os.path.isdir(d):
+                        self.module.fail_json("Failed to create directory %s: %s" % (d, to_native(err)))
                 fd, tmp_path = tempfile.mkstemp(prefix=".%s-" % fn, dir=d)
 
                 f = os.fdopen(fd, 'w')
@@ -292,9 +303,8 @@ class SourcesList(object):
 
                     try:
                         f.write(line)
-                    except IOError:
-                        err = get_exception()
-                        self.module.fail_json(msg="Failed to write to file %s: %s" % (tmp_path, unicode(err)))
+                    except IOError as err:
+                        self.module.fail_json(msg="Failed to write to file %s: %s" % (tmp_path, to_native(err)))
                 self.module.atomic_move(tmp_path, filename)
 
                 # allow the user to override the default mode
@@ -421,7 +431,7 @@ class UbuntuSourcesList(SourcesList):
             if self.add_ppa_signing_keys_callback is not None:
                 info = self._get_ppa_info(ppa_owner, ppa_name)
                 if not self._key_already_exists(info['signing_key_fingerprint']):
-                    command = ['apt-key', 'adv', '--recv-keys', '--keyserver', 'hkp://keyserver.ubuntu.com:80', info['signing_key_fingerprint']]
+                    command = ['apt-key', 'adv', '--recv-keys', '--no-tty', '--keyserver', 'hkp://keyserver.ubuntu.com:80', info['signing_key_fingerprint']]
                     self.add_ppa_signing_keys_callback(command)
 
             file = file or self._suggest_filename('%s_%s' % (line, self.codename))
@@ -498,11 +508,15 @@ def main():
         else:
             module.fail_json(msg='%s is not installed, and install_python_apt is False' % PYTHON_APT)
 
+    if not repo:
+        module.fail_json(msg='Please set argument \'repo\' to a non-empty value')
+
     if isinstance(distro, aptsources_distro.Distribution):
         sourceslist = UbuntuSourcesList(module, add_ppa_signing_keys_callback=get_add_ppa_signing_key_callback(module))
     else:
         module.fail_json(msg='Module apt_repository is not supported on target.')
 
+    sourceslist_before = copy.deepcopy(sourceslist)
     sources_before = sourceslist.dump()
 
     try:
@@ -510,9 +524,8 @@ def main():
             sourceslist.add_source(repo)
         elif state == 'absent':
             sourceslist.remove_source(repo)
-    except InvalidSource:
-        err = get_exception()
-        module.fail_json(msg='Invalid repository string: %s' % unicode(err))
+    except InvalidSource as err:
+        module.fail_json(msg='Invalid repository string: %s' % to_native(err))
 
     sources_after = sourceslist.dump()
     changed = sources_before != sources_after
@@ -533,15 +546,19 @@ def main():
             if update_cache:
                 cache = apt.Cache()
                 cache.update()
-        except OSError:
-            err = get_exception()
-            module.fail_json(msg=unicode(err))
+        except (OSError, IOError) as err:
+            # Revert the sourcelist files to their previous state.
+            # First remove any new files that were created:
+            for filename in set(sources_after.keys()).difference(sources_before.keys()):
+                if os.path.exists(filename):
+                    os.remove(filename)
+            # Now revert the existing files to their former state:
+            sourceslist_before.save()
+            # Return an error message.
+            module.fail_json(msg='apt cache update failed')
 
     module.exit_json(changed=changed, repo=repo, state=state, diff=diff)
 
-# import module snippets
-from ansible.module_utils.basic import *
-from ansible.module_utils.urls import *
 
 if __name__ == '__main__':
     main()

@@ -1,7 +1,6 @@
 #!powershell
-# This file is part of Ansible
 
-# Copyright (c) 2017 Ansible Project
+# Copyright: (c) 2017, Ansible Project
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 #Requires -Module Ansible.ModuleUtils.Legacy
@@ -48,6 +47,7 @@ $executable = Get-AnsibleParam -obj $params -name "executable" -type "path"
 $creates = Get-AnsibleParam -obj $params -name "creates" -type "path"
 $removes = Get-AnsibleParam -obj $params -name "removes" -type "path"
 $stdin = Get-AnsibleParam -obj $params -name "stdin" -type "str"
+$no_profile = Get-AnsibleParam -obj $params -name "no_profile" -type "bool" -default $false
 
 $raw_command_line = $raw_command_line.Trim()
 
@@ -56,11 +56,11 @@ $result = @{
     cmd = $raw_command_line
 }
 
-if ($creates -and $(Test-FilePath -path $creates)) {
+if ($creates -and $(Test-AnsiblePath -Path $creates)) {
     Exit-Json @{msg="skipped, since $creates exists";cmd=$raw_command_line;changed=$false;skipped=$true;rc=0}
 }
 
-if ($removes -and -not $(Test-FilePath -path $removes)) {
+if ($removes -and -not $(Test-AnsiblePath -Path $removes)) {
     Exit-Json @{msg="skipped, since $removes does not exist";cmd=$raw_command_line;changed=$false;skipped=$true;rc=0}
 }
 
@@ -78,6 +78,10 @@ If(-not $executable -or $executable -eq "powershell") {
         $exec_args = "-encodedcommand $encoded_command"
     } else {
         $exec_args = "-noninteractive -encodedcommand $encoded_command"
+    }
+
+    if ($no_profile) {
+        $exec_args = "-noprofile $exec_args"
     }
 }
 Else {

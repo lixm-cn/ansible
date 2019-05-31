@@ -1,23 +1,10 @@
 #!powershell
-# This file is part of Ansible
-#
-# Copyright 2014, Chris Hoffman <choffman@chathamfinancial.com>
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
-# WANT_JSON
-# POWERSHELL_COMMON
+# Copyright: (c) 2014, Chris Hoffman <choffman@chathamfinancial.com>
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+#Requires -Module Ansible.ModuleUtils.Legacy
+#Requires -Module Ansible.ModuleUtils.SID
 
 $ErrorActionPreference = "Stop"
 
@@ -25,7 +12,7 @@ $params = Parse-Args $args -supports_check_mode $true
 $check_mode = Get-AnsibleParam -obj $params -name '_ansible_check_mode' -type 'bool' -default $false
 
 $dependencies = Get-AnsibleParam -obj $params -name 'dependencies' -type 'list' -default $null
-$dependency_action = Get-AnsibleParam -obj $params -name 'dependency_action' -type 'str' -default 'set' -validateset 'add','remove','set' 
+$dependency_action = Get-AnsibleParam -obj $params -name 'dependency_action' -type 'str' -default 'set' -validateset 'add','remove','set'
 $description = Get-AnsibleParam -obj $params -name 'description' -type 'str'
 $desktop_interact = Get-AnsibleParam -obj $params -name 'desktop_interact' -type 'bool' -default $false
 $display_name = Get-AnsibleParam -obj $params -name 'display_name' -type 'str'
@@ -39,30 +26,47 @@ $username = Get-AnsibleParam -obj $params -name 'username' -type 'str'
 
 $result = @{
     changed = $false
-    warnings = @()
 }
 
-if ($username -ne $null -and $password -eq $null) {
-    Fail-Json $result "The argument 'password' must be supplied with 'username'"
+# parse the username to SID and back so we get the full username with domain in a way WMI understands
+if ($null -ne $username) {
+    if ($username -eq "LocalSystem") {
+        $username_sid = "S-1-5-18"
+    } else {
+        $username_sid = Convert-ToSID -account_name $username
+    }
+
+    # the SYSTEM account is a special beast, Win32_Service Change requires StartName to be LocalSystem
+    # to specify LocalSystem/NT AUTHORITY\SYSTEM
+    if ($username_sid -eq "S-1-5-18") {
+        $username = "LocalSystem"
+        $password = $null
+    } else {
+        # Win32_Service, password must be "" and not $null when setting to LocalService or NetworkService
+        if ($username_sid -in @("S-1-5-19", "S-1-5-20")) {
+            $password = ""
+        }
+        $username = Convert-FromSID -sid $username_sid
+    }
 }
-if ($password -ne $null -and $username -eq $null) {
+if ($null -ne $password -and $null -eq $username) {
     Fail-Json $result "The argument 'username' must be supplied with 'password'"
 }
-if ($desktop_interact -eq $true -and (-not ($username -eq "LocalSystem" -or $username -eq $null))) {
+if ($desktop_interact -eq $true -and (-not ($username -eq "LocalSystem" -or $null -eq $username))) {
     Fail-Json $result "Can only set 'desktop_interact' to true when 'username' equals 'LocalSystem'"
 }
-if ($path -ne $null) {
+if ($null -ne $path) {
     $path = [System.Environment]::ExpandEnvironmentVariables($path)
 }
 
 Function Get-ServiceInfo($name) {
     # Need to get new objects so we have the latest info
-    $svc = Get-Service -Name $name
-    $wmi_svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $svc.Name }
+    $svc = Get-Service | Where-Object { $_.Name -eq $name -or $_.DisplayName -eq $name }
+    $wmi_svc = Get-CimInstance -ClassName Win32_Service -Filter "name='$($svc.Name)'"
 
     # Delayed start_mode is in reality Automatic (Delayed), need to check reg key for type
     $delayed = Get-DelayedStatus -name $svc.Name
-    $actual_start_mode = $wmi_svc.StartMode.ToString().ToLower() 
+    $actual_start_mode = $wmi_svc.StartMode.ToString().ToLower()
     if ($delayed -and $actual_start_mode -eq 'auto') {
         $actual_start_mode = 'delayed'
     }
@@ -80,7 +84,7 @@ Function Get-ServiceInfo($name) {
         }
     }
     $description = $wmi_svc.Description
-    if ($description -eq $null) {
+    if ($null -eq $description) {
         $description = ""
     }
 
@@ -91,8 +95,8 @@ Function Get-ServiceInfo($name) {
     $result.start_mode = $actual_start_mode
     $result.path = $wmi_svc.PathName
     $result.description = $description
-    $result.username = $wmi_svc.startname
-    $result.desktop_interact = (ConvertTo-Bool $wmi_svc.DesktopInteract)
+    $result.username = $wmi_svc.StartName
+    $result.desktop_interact = $wmi_svc.DesktopInteract
     $result.dependencies = $existing_dependencies
     $result.depended_by = $existing_depended_by
     $result.can_pause_and_continue = $svc.CanPauseAndContinue
@@ -132,7 +136,7 @@ Function Get-WmiErrorMessage($return_value) {
 Function Get-DelayedStatus($name) {
     $delayed_key = "HKLM:\System\CurrentControlSet\Services\$name"
     try {
-        $delayed = ConvertTo-Bool ((Get-ItemProperty -Path $delayed_key).DelayedAutostart)
+        $delayed = ConvertTo-Bool ((Get-ItemProperty -LiteralPath $delayed_key).DelayedAutostart)
     } catch {
         $delayed = $false
     }
@@ -146,14 +150,14 @@ Function Set-ServiceStartMode($svc, $start_mode) {
             $delayed_key = "HKLM:\System\CurrentControlSet\Services\$($svc.Name)"
             # Original start up type was auto (delayed) and we want auto, need to removed delayed key
             if ($start_mode -eq 'auto' -and $result.start_mode -eq 'delayed') {
-                Set-ItemProperty -Path $delayed_key -Name "DelayedAutostart" -Value 0 -Type DWORD -WhatIf:$check_mode
+                Set-ItemProperty -LiteralPath $delayed_key -Name "DelayedAutostart" -Value 0 -WhatIf:$check_mode
             # Original start up type was auto and we want auto (delayed), need to add delayed key
             } elseif ($start_mode -eq 'delayed' -and $result.start_mode -eq 'auto') {
-                Set-ItemProperty -Path $delayed_key -Name "DelayedAutostart" -Value 1 -Type DWORD -WhatIf:$check_mode
+                Set-ItemProperty -LiteralPath $delayed_key -Name "DelayedAutostart" -Value 1 -WhatIf:$check_mode
             # Original start up type was not auto or auto (delayed), need to change to auto and add delayed key
             } elseif ($start_mode -eq 'delayed') {
                 $svc | Set-Service -StartupType "auto" -WhatIf:$check_mode
-                Set-ItemProperty -Path $delayed_key -Name "DelayedAutostart" -Value 1 -Type DWORD -WhatIf:$check_mode
+                Set-ItemProperty -LiteralPath $delayed_key -Name "DelayedAutostart" -Value 1 -WhatIf:$check_mode
             # Original start up type was not what we were looking for, just change to that type
             } else {
                 $svc | Set-Service -StartupType $start_mode -WhatIf:$check_mode
@@ -161,20 +165,37 @@ Function Set-ServiceStartMode($svc, $start_mode) {
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 }
 
-Function Set-ServiceAccount($wmi_svc, $username, $password) {
-    if ($result.username -ne $username) {
+Function Set-ServiceAccount($wmi_svc, $username_sid, $username, $password) {
+    if ($result.username -eq "LocalSystem") {
+        $actual_sid = "S-1-5-18"
+    } else {
+        $actual_sid = Convert-ToSID -account_name $result.username
+    }
+
+    if ($actual_sid -ne $username_sid) {
+        $change_arguments = @{
+            StartName = $username
+            StartPassword = $password
+            DesktopInteract = $result.desktop_interact
+        }
+        # need to disable desktop interact when not using the SYSTEM account
+        if ($username_sid -ne "S-1-5-18") {
+            $change_arguments.DesktopInteract = $false
+        }
+
         #WMI.Change doesn't support -WhatIf, cannot fully test with check_mode
         if (-not $check_mode) {
-            $return = $wmi_svc.Change($null,$null,$null,$null,$null,$false,$username,$password,$null,$null,$null)
+            $return = $wmi_svc | Invoke-CimMethod -MethodName Change -Arguments $change_arguments
             if ($return.ReturnValue -ne 0) {
-                Fail-Json $result "$($return.ReturnValue): $(Get-WmiErrorMessage -return_value $return.ReturnValue)"
+                $error_msg = Get-WmiErrorMessage -return_value $result.ReturnValue
+                Fail-Json -obj $result -message "Failed to set service account to $($username): $($return.ReturnValue) - $error_msg"
             }
-        }        
+        }
 
         $result.changed = $true
     }
@@ -183,9 +204,10 @@ Function Set-ServiceAccount($wmi_svc, $username, $password) {
 Function Set-ServiceDesktopInteract($wmi_svc, $desktop_interact) {
     if ($result.desktop_interact -ne $desktop_interact) {
         if (-not $check_mode) {
-            $return = $wmi_svc.Change($null,$null,$null,$null,$null,$desktop_interact,$null,$null,$null,$null,$null) 
+            $return = $wmi_svc | Invoke-CimMethod -MethodName Change -Arguments @{DesktopInteract = $desktop_interact}
             if ($return.ReturnValue -ne 0) {
-                Fail-Json $result "$($return.ReturnValue): $(Get-WmiErrorMessage -return_value $return.ReturnValue)"
+                $error_msg = Get-WmiErrorMessage -return_value $return.ReturnValue
+                Fail-Json -obj $result -message "Failed to set desktop interact $($desktop_interact): $($return.ReturnValue) - $error_msg"
             }
         }
 
@@ -200,7 +222,7 @@ Function Set-ServiceDisplayName($svc, $display_name) {
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 }
@@ -212,7 +234,7 @@ Function Set-ServiceDescription($svc, $description) {
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 }
@@ -220,11 +242,11 @@ Function Set-ServiceDescription($svc, $description) {
 Function Set-ServicePath($name, $path) {
     if ($result.path -ne $path) {
         try {
-            Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Services\$name" -Name ImagePath -Value $path -WhatIf:$check_mode
+            Set-ItemProperty -LiteralPath "HKLM:\System\CurrentControlSet\Services\$name" -Name ImagePath -Value $path -WhatIf:$check_mode
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 }
@@ -266,12 +288,14 @@ Function Set-ServiceDependencies($wmi_svc, $dependency_action, $dependencies) {
 
     if ($will_change -eq $true) {
         if (-not $check_mode) {
-            $return = $wmi_svc.Change($null,$null,$null,$null,$null,$null,$null,$null,$null,$null,$new_dependencies)
+            $return = $wmi_svc | Invoke-CimMethod -MethodName Change -Arguments @{ServiceDependencies = $new_dependencies}
             if ($return.ReturnValue -ne 0) {
-                Fail-Json $result "$($return.ReturnValue): $(Get-WmiErrorMessage -return_value $return.ReturnValue)"
+                $error_msg = Get-WmiErrorMessage -return_value $return.ReturnValue
+                $dep_string = $new_dependencies -join ", "
+                Fail-Json -obj $result -message "Failed to set service dependencies $($dep_string): $($return.ReturnValue) - $error_msg"
             }
         }
-        
+
         $result.changed = $true
     }
 }
@@ -280,38 +304,38 @@ Function Set-ServiceState($svc, $wmi_svc, $state) {
     if ($state -eq "started" -and $result.state -ne "running") {
         if ($result.state -eq "paused") {
             try {
-                Resume-Service -Name $svc.Name -WhatIf:$check_mode
+                $svc | Resume-Service -WhatIf:$check_mode
             } catch {
                 Fail-Json $result "failed to start service from paused state $($svc.Name): $($_.Exception.Message)"
             }
         } else {
             try {
-                Start-Service -Name $svc.Name -WhatIf:$check_mode
+                $svc | Start-Service -WhatIf:$check_mode
             } catch {
                 Fail-Json $result $_.Exception.Message
             }
         }
-        
+
         $result.changed = $true
     }
 
     if ($state -eq "stopped" -and $result.state -ne "stopped") {
         try {
-            Stop-Service -Name $svc.Name -Force:$force_dependent_services -WhatIf:$check_mode
+            $svc | Stop-Service -Force:$force_dependent_services -WhatIf:$check_mode
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 
     if ($state -eq "restarted") {
         try {
-            Restart-Service -Name $svc.Name -Force:$force_dependent_services -WhatIf:$check_mode
+            $svc | Restart-Service -Force:$force_dependent_services -WhatIf:$check_mode
         } catch {
             Fail-Json $result $_.Exception.Message
         }
-        
+
         $result.changed = $true
     }
 
@@ -322,7 +346,7 @@ Function Set-ServiceState($svc, $wmi_svc, $state) {
         }
 
         try {
-            Suspend-Service -Name $svc.Name -WhatIf:$check_mode
+            $svc | Suspend-Service -WhatIf:$check_mode
         } catch {
             Fail-Json $result "failed to pause service $($svc.Name): $($_.Exception.Message)"
         }
@@ -331,69 +355,72 @@ Function Set-ServiceState($svc, $wmi_svc, $state) {
 
     if ($state -eq "absent") {
         try {
-            Stop-Service -Name $svc.Name -Force:$force_dependent_services -WhatIf:$check_mode
+            $svc | Stop-Service -Force:$force_dependent_services -WhatIf:$check_mode
         } catch {
             Fail-Json $result $_.Exception.Message
         }
         if (-not $check_mode) {
-            $return = $wmi_svc.Delete()
+            $return = $wmi_svc | Invoke-CimMethod -MethodName Delete
             if ($return.ReturnValue -ne 0) {
-                Fail-Json $result "$($return.ReturnValue): $(Get-WmiErrorMessage -return_value $return.ReturnValue)"
+                $error_msg = Get-WmiErrorMessage -return_value $return.ReturnValue
+                Fail-Json -obj $result -message "Failed to delete service $($svc.Name): $($return.ReturnValue) - $error_msg"
             }
         }
-        
+
         $result.changed = $true
     }
 }
 
 Function Set-ServiceConfiguration($svc) {
-    $wmi_svc = Get-WmiObject Win32_Service | Where-Object { $_.Name -eq $svc.Name }
+    $wmi_svc = Get-CimInstance -ClassName Win32_Service -Filter "name='$($svc.Name)'"
     Get-ServiceInfo -name $svc.Name
     if ($desktop_interact -eq $true -and (-not ($result.username -eq 'LocalSystem' -or $username -eq 'LocalSystem'))) {
         Fail-Json $result "Can only set desktop_interact to true when service is run with/or 'username' equals 'LocalSystem'"
     }
 
-    if ($start_mode -ne $null) {
+    if ($null -ne $start_mode) {
         Set-ServiceStartMode -svc $svc -start_mode $start_mode
     }
 
-    if ($username -ne $null) {
-        Set-ServiceAccount -wmi_svc $wmi_svc -username $username -password $password
+    if ($null -ne $username) {
+        Set-ServiceAccount -wmi_svc $wmi_svc -username_sid $username_sid -username $username -password $password
     }
 
-    if ($display_name -ne $null) {
+    if ($null -ne $display_name) {
         Set-ServiceDisplayName -svc $svc -display_name $display_name
     }
 
-    if ($desktop_interact -ne $null) {
+    if ($null -ne $desktop_interact) {
         Set-ServiceDesktopInteract -wmi_svc $wmi_svc -desktop_interact $desktop_interact
     }
 
-    if ($description -ne $null) {
+    if ($null -ne $description) {
         Set-ServiceDescription -svc $svc -description $description
     }
 
-    if ($path -ne $null) {
+    if ($null -ne $path) {
         Set-ServicePath -name $svc.Name -path $path
     }
 
-    if ($dependencies -ne $null) {
+    if ($null -ne $dependencies) {
         Set-ServiceDependencies -wmi_svc $wmi_svc -dependency_action $dependency_action -dependencies $dependencies
     }
 
-    if ($state -ne $null) {
+    if ($null -ne $state) {
         Set-ServiceState -svc $svc -wmi_svc $wmi_svc -state $state
     }
 }
 
-$svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+# need to use Where-Object as -Name doesn't work with [] in the service name
+# https://github.com/ansible/ansible/issues/37621
+$svc = Get-Service | Where-Object { $_.Name -eq $name -or $_.DisplayName -eq $name }
 if ($svc) {
     Set-ServiceConfiguration -svc $svc
 } else {
     $result.exists = $false
     if ($state -ne 'absent') {
         # Check if path is defined, if so create the service
-        if ($path -ne $null) {
+        if ($null -ne $path) {
             try {
                 New-Service -Name $name -BinaryPathname $path -WhatIf:$check_mode
             } catch {
@@ -401,19 +428,19 @@ if ($svc) {
             }
             $result.changed = $true
 
-            $svc = Get-Service -Name $name
+            $svc = Get-Service | Where-Object { $_.Name -eq $name }
             Set-ServiceConfiguration -svc $svc
         } else {
             # We will only reach here if the service is installed and the state is not absent
             # Will check if any of the default actions are set and fail as we cannot action it
-            if ($start_mode -ne $null -or
-                $state -ne $null -or
-                $username -ne $null -or
-                $password -ne $null -or
-                $display_name -ne $null -or
-                $description -ne $null -or
+            if ($null -ne $start_mode -or
+                $null -ne $state -or
+                $null -ne $username -or
+                $null -ne $password -or
+                $null -ne $display_name -or
+                $null -ne $description -or
                 $desktop_interact -ne $false -or
-                $dependencies -ne $null -or
+                $null -ne $dependencies -or
                 $dependency_action -ne 'set') {
                     Fail-Json $result "Service '$name' is not installed, need to set 'path' to create a new service"
             }
@@ -425,14 +452,12 @@ if ($svc) {
 if ($state -eq 'absent') {
     # Recreate result so it doesn't have the extra meta data now that is has been deleted
     $changed = $result.changed
-    $warnings = $result.warnings
     $result = @{
         changed = $changed
-        warnings = $warnings
         exists = $false
     }
-} elseif ($svc -ne $null) {
+} elseif ($null -ne $svc) {
     Get-ServiceInfo -name $name
 }
 
-Exit-Json $result
+Exit-Json -obj $result

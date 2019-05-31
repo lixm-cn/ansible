@@ -15,7 +15,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_serverautoscalepolicy
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of ServerAutoScalePolicy Avi RESTful Object
 description:
@@ -48,6 +48,7 @@ options:
         description:
             - Use avi intelligent autoscale algorithm where autoscale is performed by comparing load on the pool against estimated capacity of all the servers.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     intelligent_scalein_margin:
         description:
             - Maximum extra capacity as percentage of load used by the intelligent scheme.
@@ -90,7 +91,6 @@ options:
         description:
             - Cooldown period during which no new scalein is triggered to allow previous scalein to successfully complete.
             - Default value when not specified in API or module is interpreted by Avi Controller as 300.
-            - Units(SEC).
     scaleout_alertconfig_refs:
         description:
             - Trigger scaleout when alerts due to any of these alert configurations are raised.
@@ -99,7 +99,6 @@ options:
         description:
             - Cooldown period during which no new scaleout is triggered to allow previous scaleout to successfully complete.
             - Default value when not specified in API or module is interpreted by Avi Controller as 300.
-            - Units(SEC).
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
@@ -110,6 +109,7 @@ options:
         description:
             - Use predicted load rather than current load.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     uuid:
         description:
             - Unique object identifier of the object.
@@ -137,7 +137,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -172,10 +172,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'serverautoscalepolicy',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

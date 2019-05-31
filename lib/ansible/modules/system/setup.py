@@ -23,14 +23,14 @@ options:
         version_added: "2.1"
         description:
             - "if supplied, restrict the additional facts collected to the given subset.
-              Possible values: all, min, hardware, network, virtual, ohai, and
-              facter Can specify a list of values to specify a larger subset.
+              Possible values: C(all), C(min), C(hardware), C(network), C(virtual), C(ohai), and
+              C(facter). Can specify a list of values to specify a larger subset.
               Values can also be used with an initial C(!) to specify that
               that specific subset should not be collected.  For instance:
-              !hardware, !network, !virtual, !ohai, !facter. If !all is specified
+              C(!hardware,!network,!virtual,!ohai,!facter). If C(!all) is specified
               then only the min subset is collected. To avoid collecting even the
-              min subset, specify !all and !min subsets. To collect only specific facts,
-              use !all, !min, and specify the particular fact subsets.
+              min subset, specify C(!all,!min). To collect only specific facts,
+              use C(!all,!min), and specify the particular fact subsets.
               Use the filter parameter if you do not want to display some collected
               facts."
         required: false
@@ -50,10 +50,12 @@ options:
     fact_path:
         version_added: "1.3"
         description:
-            - path used for local ansible facts (*.fact) - files in this dir
-              will be run (if executable) and their results be added to ansible_local facts
+            - path used for local ansible facts (C(*.fact)) - files in this dir
+              will be run (if executable) and their results be added to C(ansible_local) facts
               if a file is not executable it is read. Check notes for Windows options. (from 2.1 on)
-              File/results format can be json or ini-format
+              File/results format can be JSON or INI-format. The default C(fact_path) can be
+              specified in C(ansible.cfg) for when setup is automatically called as part of
+              C(gather_facts).
         required: false
         default: '/etc/ansible/facts.d'
 description:
@@ -80,10 +82,11 @@ notes:
       output of your scripts.
       This option was added in Ansible 2.1.
     - This module is also supported for Windows targets.
+    - This module should be run with elevated priviliges on BSD systems to gather facts like ansible_product_version.
 author:
     - "Ansible Core Team"
     - "Michael DeHaan"
-    - "David O'Brien @david_obrien davidobrien1985"
+    - "David O'Brien (@davidobrien1985)"
 '''
 
 EXAMPLES = """
@@ -98,6 +101,13 @@ EXAMPLES = """
 
 # Collect only facts returned by facter.
 # ansible all -m setup -a 'gather_subset=!all,!any,facter'
+
+- name: Collect only facts returned by facter
+  setup:
+    gather_subset:
+      - '!all'
+      - '!any'
+      - facter
 
 # Display only facts about certain interfaces.
 # ansible all -m setup -a 'filter=ansible_eth[0-2]'
@@ -150,8 +160,8 @@ def main():
     # TODO: decide what '!all' means, I lean towards making it mean none, but likely needs
     #       some tweaking on how gather_subset operations are performed
     minimal_gather_subset = frozenset(['apparmor', 'caps', 'cmdline', 'date_time',
-                                       'distribution', 'dns', 'env', 'fips', 'local', 'lsb',
-                                       'pkg_mgr', 'platform', 'python', 'selinux',
+                                       'distribution', 'dns', 'env', 'fips', 'local',
+                                       'lsb', 'pkg_mgr', 'platform', 'python', 'selinux',
                                        'service_mgr', 'ssh_pub_keys', 'user'])
 
     all_collector_classes = default_collectors.collectors

@@ -25,16 +25,13 @@
 #
 # { "groups": ["utility", "databases"], "a": false, "b": true }
 
-try:
-    import json
-except ImportError:
-    import simplejson as json
+import json
 import os
 import sys
 from optparse import OptionParser
 
-from six import iteritems
-from six.moves.urllib.parse import urlencode
+from ansible.module_utils.six import iteritems
+from ansible.module_utils.six.moves.urllib.parse import urlencode
 
 from ansible.module_utils.urls import open_url
 

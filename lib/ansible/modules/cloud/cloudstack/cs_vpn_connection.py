@@ -18,69 +18,82 @@ module: cs_vpn_connection
 short_description: Manages site-to-site VPN connections on Apache CloudStack based clouds.
 description:
     - Create and remove VPN connections.
-version_added: "2.5"
-author: "René Moser (@resmo)"
+version_added: '2.5'
+author: René Moser (@resmo)
 options:
   vpc:
     description:
       - Name of the VPC the VPN connection is related to.
+    type: str
     required: true
   vpn_customer_gateway:
     description:
-      - Name of the VPN connection.
-      - Required when C(state=present).
+      - Name of the VPN customer gateway.
+    type: str
+    required: true
   passive:
     description:
       - State of the VPN connection.
-      - Only considered when C(state=present).
+      - Only considered when I(state=present).
     default: no
-    choices: [ yes, no ]
+    type: bool
   force:
     description:
-      - Activate the VPN gateway if not already activated on C(state=present).
+      - Activate the VPN gateway if not already activated on I(state=present).
       - Also see M(cs_vpn_gateway).
     default: no
-    choices: [ yes, no ]
+    type: bool
   state:
     description:
       - State of the VPN connection.
+    type: str
     default: present
     choices: [ present, absent ]
+  zone:
+    description:
+      - Name of the zone the VPC is related to.
+      - If not set, default zone is used.
+    type: str
   domain:
     description:
       - Domain the VPN connection is related to.
+    type: str
   account:
     description:
       - Account the VPN connection is related to.
+    type: str
   project:
     description:
       - Name of the project the VPN connection is related to.
+    type: str
   poll_async:
     description:
       - Poll async jobs until job has finished.
-    default: true
+    default: yes
+    type: bool
 extends_documentation_fragment: cloudstack
 '''
 
 EXAMPLES = r'''
 - name: Create a VPN connection with activated VPN gateway
-  local_action:
-    module: cs_vpn_connection
+  cs_vpn_connection:
     vpn_customer_gateway: my vpn connection
     vpc: my vpc
+  delegate_to: localhost
 
 - name: Create a VPN connection and force VPN gateway activation
-  local_action:
-    module: cs_vpn_connection
+  cs_vpn_connection:
     vpn_customer_gateway: my vpn connection
     vpc: my vpc
     force: yes
+  delegate_to: localhost
 
 - name: Remove a vpn connection
-  local_action:
-    module: cs_vpn_connection
+  cs_vpn_connection:
+    vpn_customer_gateway: my vpn connection
     vpc: my vpc
     state: absent
+  delegate_to: localhost
 '''
 
 RETURN = r'''
@@ -88,32 +101,32 @@ RETURN = r'''
 id:
   description: UUID of the VPN connection.
   returned: success
-  type: string
+  type: str
   sample: 04589590-ac63-4ffc-93f5-b698b8ac38b6
 vpn_gateway_id:
   description: UUID of the VPN gateway.
   returned: success
-  type: string
+  type: str
   sample: 04589590-ac63-93f5-4ffc-b698b8ac38b6
 domain:
   description: Domain the VPN connection is related to.
   returned: success
-  type: string
+  type: str
   sample: example domain
 account:
   description: Account the VPN connection is related to.
   returned: success
-  type: string
+  type: str
   sample: example account
 project:
   description: Name of project the VPN connection is related to.
   returned: success
-  type: string
+  type: str
   sample: Production
 created:
   description: Date the connection was created.
   returned: success
-  type: string
+  type: str
   sample: 2014-12-01T14:57:57+0100
 dpd:
   description: Whether dead pear detection is enabled or not.
@@ -128,7 +141,7 @@ esp_lifetime:
 esp_policy:
   description: IKE policy of the VPN connection.
   returned: success
-  type: string
+  type: str
   sample: aes256-sha1;modp1536
 force_encap:
   description: Whether encapsulation for NAT traversal is enforced or not.
@@ -143,7 +156,7 @@ ike_lifetime:
 ike_policy:
   description: ESP policy of the VPN connection.
   returned: success
-  type: string
+  type: str
   sample: aes256-sha1;modp1536
 cidrs:
   description: List of CIDRs of the customer gateway.
@@ -158,17 +171,17 @@ passive:
 public_ip:
   description: IP address of the VPN gateway.
   returned: success
-  type: string
+  type: str
   sample: 10.100.212.10
 gateway:
   description: IP address of the VPN customer gateway.
   returned: success
-  type: string
+  type: str
   sample: 10.101.214.10
 state:
   description: State of the VPN connection.
   returned: success
-  type: string
+  type: str
   sample: Connected
 '''
 
@@ -197,21 +210,21 @@ class AnsibleCloudStackVpnConnection(AnsibleCloudStack):
         }
         self.vpn_customer_gateway = None
 
-    def get_vpn_customer_gateway(self, key=None):
-        vpn_customer_gateway = self.module.params.get('vpn_customer_gateway')
-
-        if self.vpn_customer_gateway:
+    def get_vpn_customer_gateway(self, key=None, identifier=None, refresh=False):
+        if not refresh and self.vpn_customer_gateway:
             return self._get_by_key(key, self.vpn_customer_gateway)
 
         args = {
             'account': self.get_account(key='name'),
             'domainid': self.get_domain(key='id'),
-            'projectid': self.get_project(key='id')
+            'projectid': self.get_project(key='id'),
+            'fetch_list': True,
         }
 
+        vpn_customer_gateway = identifier or self.module.params.get('vpn_customer_gateway')
         vcgws = self.query_api('listVpnCustomerGateways', **args)
         if vcgws:
-            for vcgw in vcgws['vpncustomergateway']:
+            for vcgw in vcgws:
                 if vpn_customer_gateway.lower() in [vcgw['id'], vcgw['name'].lower()]:
                     self.vpn_customer_gateway = vcgw
                     return self._get_by_key(key, self.vpn_customer_gateway)
@@ -247,7 +260,9 @@ class AnsibleCloudStackVpnConnection(AnsibleCloudStack):
 
         vpn_conns = self.query_api('listVpnConnections', **args)
         if vpn_conns:
-            return vpn_conns['vpnconnection'][0]
+            for vpn_conn in vpn_conns['vpnconnection']:
+                if self.get_vpn_customer_gateway(key='id') == vpn_conn['s2scustomergatewayid']:
+                    return vpn_conn
 
     def present_vpn_connection(self):
         vpn_conn = self.get_vpn_connection()
@@ -293,17 +308,20 @@ class AnsibleCloudStackVpnConnection(AnsibleCloudStack):
             if 'cidrlist' in vpn_conn:
                 self.result['cidrs'] = vpn_conn['cidrlist'].split(',') or [vpn_conn['cidrlist']]
             # Ensure we return a bool
-            self.result['force_encap'] = True if vpn_conn['forceencap'] else False
-
-            self.module.params['vpn_customer_gateway'] = vpn_conn['s2scustomergatewayid']
-            self.result['vpn_customer_gateway'] = self.get_vpn_customer_gateway(key='name')
+            self.result['force_encap'] = True if vpn_conn.get('forceencap') else False
+            args = {
+                'key': 'name',
+                'identifier': vpn_conn['s2scustomergatewayid'],
+                'refresh': True,
+            }
+            self.result['vpn_customer_gateway'] = self.get_vpn_customer_gateway(**args)
         return self.result
 
 
 def main():
     argument_spec = cs_argument_spec()
     argument_spec.update(dict(
-        vpn_customer_gateway=dict(),
+        vpn_customer_gateway=dict(required=True),
         vpc=dict(required=True),
         domain=dict(),
         account=dict(),
@@ -318,9 +336,6 @@ def main():
     module = AnsibleModule(
         argument_spec=argument_spec,
         required_together=cs_required_together(),
-        required_if=[
-            ('state', 'present', ['vpn_customer_gateway']),
-        ],
         supports_check_mode=True
     )
 

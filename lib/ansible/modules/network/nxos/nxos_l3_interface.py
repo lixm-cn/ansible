@@ -41,6 +41,7 @@ options:
       - State of the L3 interface configuration.
     default: present
     choices: ['present', 'absent']
+extends_documentation_fragment: nxos
 """
 
 EXAMPLES = """
@@ -89,7 +90,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.network.common.config import CustomNetworkConfig
 from ansible.module_utils.network.common.utils import remove_default_spec
 from ansible.module_utils.network.nxos.nxos import get_config, load_config
-from ansible.module_utils.network.nxos.nxos import nxos_argument_spec
+from ansible.module_utils.network.nxos.nxos import nxos_argument_spec, normalize_interface
 
 
 def search_obj_in_list(name, lst):
@@ -98,7 +99,7 @@ def search_obj_in_list(name, lst):
             return o
 
 
-def map_obj_to_commands(updates, module):
+def map_obj_to_commands(updates, module, warnings):
     commands = list()
     want, have = updates
 
@@ -111,33 +112,32 @@ def map_obj_to_commands(updates, module):
 
         obj_in_have = search_obj_in_list(name, have)
 
-        if state == 'absent' and obj_in_have:
+        if not obj_in_have:
+            warnings.append('Unknown interface {0}'.format(name))
+        elif state == 'absent':
             command = []
             if obj_in_have['name'] == name:
-                if ipv4 and obj_in_have['ipv4']:
+                if ipv4 and ipv4 == obj_in_have['ipv4']:
                     command.append('no ip address {0}'.format(ipv4))
-                if ipv6 and obj_in_have['ipv6']:
+                if ipv6 and ipv6 in obj_in_have['ipv6']:
                     command.append('no ipv6 address {0}'.format(ipv6))
                 if command:
                     command.append('exit')
                     command.insert(0, 'interface {0}'.format(name))
-                    command.insert(1, 'no switchport')
             commands.extend(command)
 
-        elif state == 'present' and obj_in_have:
+        elif state == 'present':
             command = []
             if obj_in_have['name'] == name:
                 if ipv4 and ipv4 != obj_in_have['ipv4']:
                     command.append('ip address {0}'.format(ipv4))
-                if ipv6 and ipv6 != obj_in_have['ipv6']:
+                if ipv6 and ipv6 not in obj_in_have['ipv6']:
                     command.append('ipv6 address {0}'.format(ipv6))
                 if command:
                     command.append('exit')
                     command.insert(0, 'interface {0}'.format(name))
-                    command.insert(1, 'no switchport')
                 elif not ipv4 and not ipv6:
                     command.append('interface {0}'.format(name))
-                    command.append('no switchport')
             commands.extend(command)
 
     return commands
@@ -153,10 +153,14 @@ def map_params_to_obj(module):
                 if item.get(key) is None:
                     item[key] = module.params[key]
 
-            obj.append(item.copy())
+            d = item.copy()
+            name = d['name']
+            d['name'] = normalize_interface(name)
+            obj.append(d)
+
     else:
         obj.append({
-            'name': module.params['name'],
+            'name': normalize_interface(module.params['name']),
             'ipv4': module.params['ipv4'],
             'ipv6': module.params['ipv6'],
             'state': module.params['state']
@@ -172,12 +176,12 @@ def map_config_to_obj(want, module):
     for w in want:
         parents = ['interface {0}'.format(w['name'])]
         config = netcfg.get_section(parents)
-        obj = dict(name=None, ipv4=None, ipv6=None)
+        obj = dict(name=None, ipv4=None, ipv6=[])
 
         if config:
             match_name = re.findall(r'interface (\S+)', config, re.M)
             if match_name:
-                obj['name'] = match_name[0]
+                obj['name'] = normalize_interface(match_name[0])
 
             match_ipv4 = re.findall(r'ip address (\S+)', config, re.M)
             if match_ipv4:
@@ -185,9 +189,9 @@ def map_config_to_obj(want, module):
 
             match_ipv6 = re.findall(r'ipv6 address (\S+)', config, re.M)
             if match_ipv6:
-                obj['ipv6'] = match_ipv6[0]
+                obj['ipv6'] = match_ipv6
 
-        objs.append(obj)
+            objs.append(obj)
     return objs
 
 
@@ -222,21 +226,22 @@ def main():
 
     warnings = list()
     result = {'changed': False}
-    if warnings:
-        result['warnings'] = warnings
 
     want = map_params_to_obj(module)
     have = map_config_to_obj(want, module)
 
-    commands = map_obj_to_commands((want, have), module)
+    commands = map_obj_to_commands((want, have), module, warnings)
     result['commands'] = commands
 
+    if warnings:
+        result['warnings'] = warnings
     if commands:
         if not module.check_mode:
             load_config(module, commands)
         result['changed'] = True
 
     module.exit_json(**result)
+
 
 if __name__ == '__main__':
     main()

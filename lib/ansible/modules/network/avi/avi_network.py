@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_network
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of Network Avi RESTful Object
 description:
@@ -52,10 +52,19 @@ options:
         description:
             - Select the ip address management scheme for this network.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     exclude_discovered_subnets:
         description:
             - When selected, excludes all discovered subnets in this network from consideration for virtual service placement.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
+    ip6_autocfg_enabled:
+        description:
+            - Enable ipv6 auto configuration.
+            - Field introduced in 18.1.1.
+            - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        version_added: "2.9"
+        type: bool
     name:
         description:
             - Name of the object.
@@ -64,6 +73,7 @@ options:
         description:
             - Boolean flag to set synced_from_se.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
@@ -77,6 +87,7 @@ options:
         description:
             - Boolean flag to set vcenter_dvs.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     vimgrnw_ref:
         description:
             - It is a reference to an object of type vimgrnwruntime.
@@ -107,7 +118,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -123,6 +134,7 @@ def main():
         configured_subnets=dict(type='list',),
         dhcp_enabled=dict(type='bool',),
         exclude_discovered_subnets=dict(type='bool',),
+        ip6_autocfg_enabled=dict(type='bool',),
         name=dict(type='str', required=True),
         synced_from_se=dict(type='bool',),
         tenant_ref=dict(type='str',),
@@ -137,10 +149,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'network',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

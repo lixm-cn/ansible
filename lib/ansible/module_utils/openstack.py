@@ -76,21 +76,21 @@ def openstack_find_nova_addresses(addresses, ext_tag, key_name=None):
 
 def openstack_full_argument_spec(**kwargs):
     spec = dict(
-        cloud=dict(default=None),
+        cloud=dict(default=None, type='raw'),
         auth_type=dict(default=None),
         auth=dict(default=None, type='dict', no_log=True),
         region_name=dict(default=None),
         availability_zone=dict(default=None),
-        verify=dict(default=None, type='bool', aliases=['validate_certs']),
-        cacert=dict(default=None),
-        cert=dict(default=None),
-        key=dict(default=None, no_log=True),
+        validate_certs=dict(default=None, type='bool', aliases=['verify']),
+        ca_cert=dict(default=None, aliases=['cacert']),
+        client_cert=dict(default=None, aliases=['cert']),
+        client_key=dict(default=None, no_log=True, aliases=['key']),
         wait=dict(default=True, type='bool'),
         timeout=dict(default=180, type='int'),
         api_timeout=dict(default=None, type='int'),
-        endpoint_type=dict(
-            default='public', choices=['public', 'internal', 'admin']
-        )
+        interface=dict(
+            default='public', choices=['public', 'internal', 'admin'],
+            aliases=['endpoint_type']),
     )
     spec.update(kwargs)
     return spec
@@ -106,3 +106,58 @@ def openstack_module_kwargs(**kwargs):
                 ret[key] = kwargs[key]
 
     return ret
+
+
+def openstack_cloud_from_module(module, min_version='0.12.0'):
+    from distutils.version import StrictVersion
+    try:
+        # Due to the name shadowing we should import other way
+        import importlib
+        sdk = importlib.import_module('openstack')
+        sdk_version = importlib.import_module('openstack.version')
+    except ImportError:
+        module.fail_json(msg='openstacksdk is required for this module')
+
+    if min_version:
+        min_version = max(StrictVersion('0.12.0'), StrictVersion(min_version))
+    else:
+        min_version = StrictVersion('0.12.0')
+
+    if StrictVersion(sdk_version.__version__) < min_version:
+        module.fail_json(
+            msg="To utilize this module, the installed version of "
+                "the openstacksdk library MUST be >={min_version}.".format(
+                    min_version=min_version))
+
+    cloud_config = module.params.pop('cloud', None)
+    try:
+        if isinstance(cloud_config, dict):
+            fail_message = (
+                "A cloud config dict was provided to the cloud parameter"
+                " but also a value was provided for {param}. If a cloud"
+                " config dict is provided, {param} should be"
+                " excluded.")
+            for param in (
+                    'auth', 'region_name', 'validate_certs',
+                    'ca_cert', 'client_key', 'api_timeout', 'auth_type'):
+                if module.params[param] is not None:
+                    module.fail_json(msg=fail_message.format(param=param))
+            # For 'interface' parameter, fail if we receive a non-default value
+            if module.params['interface'] != 'public':
+                module.fail_json(msg=fail_message.format(param='interface'))
+            return sdk, sdk.connect(**cloud_config)
+        else:
+            return sdk, sdk.connect(
+                cloud=cloud_config,
+                auth_type=module.params['auth_type'],
+                auth=module.params['auth'],
+                region_name=module.params['region_name'],
+                verify=module.params['validate_certs'],
+                cacert=module.params['ca_cert'],
+                key=module.params['client_key'],
+                api_timeout=module.params['api_timeout'],
+                interface=module.params['interface'],
+            )
+    except sdk.exceptions.SDKException as e:
+        # Probably a cloud configuration/login error
+        module.fail_json(msg=str(e))

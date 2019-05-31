@@ -16,7 +16,7 @@ ANSIBLE_METADATA = {'metadata_version': '1.1',
 DOCUMENTATION = '''
 ---
 module: avi_sslprofile
-author: Gaurav Rastogi (grastogi@avinetworks.com)
+author: Gaurav Rastogi (@grastogi23) <grastogi@avinetworks.com>
 
 short_description: Module for setup of SSLProfile Avi RESTful Object
 description:
@@ -68,6 +68,7 @@ options:
         description:
             - Enable ssl session re-use.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     name:
         description:
             - Name of the object.
@@ -76,24 +77,32 @@ options:
         description:
             - Prefer the ssl cipher ordering presented by the client during the ssl handshake over the one specified in the ssl profile.
             - Default value when not specified in API or module is interpreted by Avi Controller as False.
+        type: bool
     send_close_notify:
         description:
             - Send 'close notify' alert message for a clean shutdown of the ssl connection.
             - Default value when not specified in API or module is interpreted by Avi Controller as True.
+        type: bool
     ssl_rating:
         description:
             - Sslrating settings for sslprofile.
     ssl_session_timeout:
         description:
-            - The amount of time before an ssl session expires.
+            - The amount of time in seconds before an ssl session expires.
             - Default value when not specified in API or module is interpreted by Avi Controller as 86400.
-            - Units(SEC).
     tags:
         description:
             - List of tag.
     tenant_ref:
         description:
             - It is a reference to an object of type tenant.
+    type:
+        description:
+            - Ssl profile type.
+            - Enum options - SSL_PROFILE_TYPE_APPLICATION, SSL_PROFILE_TYPE_SYSTEM.
+            - Field introduced in 17.2.8.
+            - Default value when not specified in API or module is interpreted by Avi Controller as SSL_PROFILE_TYPE_APPLICATION.
+        version_added: "2.6"
     url:
         description:
             - Avi controller URL of the object.
@@ -159,7 +168,7 @@ obj:
 from ansible.module_utils.basic import AnsibleModule
 try:
     from ansible.module_utils.network.avi.avi import (
-        avi_common_argument_spec, HAS_AVI, avi_ansible_api)
+        avi_common_argument_spec, avi_ansible_api, HAS_AVI)
 except ImportError:
     HAS_AVI = False
 
@@ -184,6 +193,7 @@ def main():
         ssl_session_timeout=dict(type='int',),
         tags=dict(type='list',),
         tenant_ref=dict(type='str',),
+        type=dict(type='str',),
         url=dict(type='str',),
         uuid=dict(type='str',),
     )
@@ -192,10 +202,11 @@ def main():
         argument_spec=argument_specs, supports_check_mode=True)
     if not HAS_AVI:
         return module.fail_json(msg=(
-            'Avi python API SDK (avisdk>=17.1) is not installed. '
+            'Avi python API SDK (avisdk>=17.1) or requests is not installed. '
             'For more details visit https://github.com/avinetworks/sdk.'))
     return avi_ansible_api(module, 'sslprofile',
                            set([]))
+
 
 if __name__ == '__main__':
     main()

@@ -68,14 +68,10 @@ USER_AGENT_VERSION = "v1"
 import sys
 import os
 import argparse
-import ConfigParser
 from collections import defaultdict
+from ansible.module_utils.six.moves import configparser as ConfigParser
 
-try:
-    import json
-except ImportError:
-    # noinspection PyUnresolvedReferences,PyPackageRequirements
-    import simplejson as json
+import json
 
 try:
     # noinspection PyUnresolvedReferences
@@ -287,6 +283,7 @@ class OVirtInventory(object):
             return json.dumps(data, sort_keys=True, indent=2)
         else:
             return json.dumps(data)
+
 
 # Run the script
 OVirtInventory()

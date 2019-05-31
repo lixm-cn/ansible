@@ -17,12 +17,15 @@ DOCUMENTATION = """
         description: path(s) of files to read
         required: True
     notes:
-      - Patterns ore only supported on files, not directory/paths.
+      - Patterns are only supported on files, not directory/paths.
+      - Matching is against local system files on the Ansible controller.
+        To iterate a list of files on a remote node, use the M(find) module.
+      - Returns a string list of paths joined by commas, or an empty list if no files match. For a 'true list' pass C(wantlist=True) to the lookup.
 """
 
 EXAMPLES = """
-- name: display content of all .txt files in dir
-  debug: msg={{lookup('fileglob', '/my/path/*.txt')}}
+- name: Display paths of all .txt files in dir
+  debug: msg={{ lookup('fileglob', '/my/path/*.txt') }}
 
 - name: Copy each file over that matches the given pattern
   copy:
@@ -35,9 +38,9 @@ EXAMPLES = """
 """
 
 RETURN = """
-  _raw:
+  _list:
     description:
-      - content of file(s)
+      - list of files
 """
 
 import os

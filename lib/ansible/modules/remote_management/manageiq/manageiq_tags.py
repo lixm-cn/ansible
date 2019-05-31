@@ -32,15 +32,12 @@ options:
       - absent - tags should not exist,
       - present - tags should exist,
       - list - list current tags.
-    required: False
     choices: ['absent', 'present', 'list']
     default: 'present'
   tags:
     description:
       - tags - list of dictionaries, each includes 'name' and 'category' keys.
       - required if state is present or absent.
-    required: false
-    default: null
   resource_type:
     description:
       - the relevant resource type in manageiq
@@ -48,12 +45,10 @@ options:
     choices: ['provider', 'host', 'vm', 'blueprint', 'category', 'cluster',
         'data store', 'group', 'resource pool', 'service', 'service template',
         'template', 'tenant', 'user']
-    default: null
   resource_name:
     description:
       - the relevant resource name in manageiq
     required: true
-    default: null
 '''
 
 EXAMPLES = '''
@@ -70,7 +65,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 
 - name: Remove tags for a provider in ManageIQ
   manageiq_tags:
@@ -86,7 +81,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 
 - name: List current tags for a provider in ManageIQ
   manageiq_tags:
@@ -97,7 +92,7 @@ EXAMPLES = '''
       url: 'http://127.0.0.1:3000'
       username: 'admin'
       password: 'smartvm'
-      verify_ssl: False
+      validate_certs: False
 '''
 
 RETURN = '''
